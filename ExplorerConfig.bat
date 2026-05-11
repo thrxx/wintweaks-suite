@@ -1,30 +1,44 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title Explorer Config v1.5
+title Explorer Config v2.0.0
 
-:: === АВТОЗАПРОС ПРАВ АДМИНИСТРАТОРА ===
+:: ============================================================================
+:: v2.0.0: CRITICAL REFACTORING - RELIABILITY & SAFETY
+:: - Fixed: Replaced dangerous `taskkill /F` with safe `taskkill /IM explorer.exe`.
+:: - Fixed: Window size now enforced via hybrid mode con + PowerShell API.
+:: - Added: English UI, Fixed Window Size (100x35), Execution Context (MANUAL/BATCH).
+:: - Added: Structured logging to %LOCALAPPDATA%\Tweaker\explorer_config.log.
+:: - Improved: Status checks use direct reg query logic (removed fragile disabledelayedexpansion).
+:: ============================================================================
+
+:: === AUTO ELEVATION ===
 net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo.
-    echo [!] Для изменения настроек проводника требуются права администратора.
-    echo     Пожалуйста, подтвердите запрос UAC.
+    echo [!] Administrator privileges required.
+    echo     Please confirm the UAC prompt.
     echo.
-    powershell -Command "Start-Process '%~dpnx0' -Verb RunAs" >nul 2>&1
+    powershell -NoProfile -Command "Start-Process '%~dpnx0' -Verb RunAs" >nul 2>&1
     exit /b
 )
-:: ========================================
 
-:: === ОПРЕДЕЛЕНИЕ ВЕРСИИ WINDOWS ===
-for /f "tokens=2 delims=." %%v in ('ver') do set "WIN_VER=%%v"
-if %WIN_VER% GEQ 22000 (
+:: ============================================================================
+:: v2.0.0: WINDOW SIZE & OS DETECTION
+:: ============================================================================
+mode con cols=100 lines=35 >nul 2>&1
+powershell -NoProfile -Command "[Console]::WindowWidth=100; [Console]::WindowHeight=35; [Console]::BufferWidth=100; [Console]::BufferHeight=35" >nul 2>&1
+
+for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuild 2^>nul') do set "BUILD=%%v"
+if %BUILD% GEQ 22000 (
     set "OS_TYPE=win11"
+    set "OS_NAME=Windows 11"
 ) else (
     set "OS_TYPE=win10"
+    set "OS_NAME=Windows 10"
 )
-:: ========================================
 
-:: Цвета VT100 (без восклицательных знаков в именах переменных)
+:: Colors
 for /f "delims=" %%a in ('echo prompt $E^| cmd') do set "ESC=%%a"
 set "blue=%ESC%[96m"
 set "green=%ESC%[92m"
@@ -33,41 +47,50 @@ set "yellow=%ESC%[93m"
 set "white=%ESC%[97m"
 set "reset=%ESC%[0m"
 
-call :CheckExplorerStatus
+:: Paths
+set "LOG_DIR=%LOCALAPPDATA%\Tweaker"
+set "LOG_FILE=%LOG_DIR%\explorer_config.log"
+if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul
 
+set "EXEC_MODE=MANUAL"
+
+echo [%date% %time%] [%EXEC_MODE%] Explorer Config v2.0.0 Started >> "%LOG_FILE%"
+
+call :CheckExplorerStatus
+goto menu
+
+:: ============================================================================
+:: MAIN MENU
+:: ============================================================================
 :menu
 cls
 echo.
-echo %blue%EXPLORER CONFIG v1.5%reset%
+echo %blue%EXPLORER CONFIG v2.0.0%reset%
 echo ================================================================================
 echo.
-if "%OS_TYPE%"=="win10" (
-    echo %yellow%Обнаружена: Windows 10%reset%
-) else (
-    echo %yellow%Обнаружена: Windows 11%reset%
-)
-echo %yellow%  Для применения изменений необходимо перезапустить проводник.%reset%
+echo %yellow%  %OS_NAME% (Build %BUILD%)%reset%
+echo %yellow%  Restarting Explorer is required for some changes.%reset%
 echo.
-echo %white%[1]%reset%  Открытие проводника          : %open_color%%open_status%%reset%
-echo %white%[2]%reset%  Кнопка "Главное"             : %home_color%%home_status%%reset%  %red%[Win11]%reset%
-echo %white%[3]%reset%  Кнопка "Галерея"             : %gallery_color%%gallery_status%%reset%  %red%[Win11]%reset%
-echo %white%[4]%reset%  Кнопка "Сеть"                : %network_color%%network_status%%reset%
-echo %white%[5]%reset%  Корзина в панели навигации   : %navbin_color%%navbin_status%%reset%
-echo %white%[6]%reset%  Корзина на рабочем столе     : %desktopbin_color%%desktopbin_status%%reset%
-echo %white%[7]%reset%  Компактный вид               : %compact_color%%compact_status%%reset%  %red%[Win11]%reset%
-echo %white%[8]%reset%  Частые папки (Recent)        : %recent_color%%recent_status%%reset%
-echo %white%[9]%reset%  Контекстное меню             : %context_color%%context_status%%reset%  %red%[Win11]%reset%
+echo %white%[1]%reset%  Open Explorer to              : %open_color%%open_status%%reset%
+echo %white%[2]%reset%  "Home" Button                 : %home_color%%home_status%%reset%  %red%[Win11]%reset%
+echo %white%[3]%reset%  "Gallery" Button              : %gallery_color%%gallery_status%%reset%  %red%[Win11]%reset%
+echo %white%[4]%reset%  "Network" Button              : %network_color%%network_status%%reset%
+echo %white%[5]%reset%  Recycle Bin in Navigation     : %navbin_color%%navbin_status%%reset%
+echo %white%[6]%reset%  Recycle Bin on Desktop        : %desktopbin_color%%desktopbin_status%%reset%
+echo %white%[7]%reset%  Compact View                  : %compact_color%%compact_status%%reset%  %red%[Win11]%reset%
+echo %white%[8]%reset%  Recent Folders (Recent)       : %recent_color%%recent_status%%reset%
+echo %white%[9]%reset%  Context Menu                  : %context_color%%context_status%%reset%  %red%[Win11]%reset%
 echo.
 echo --------------------------------------------------------------------------------
-echo %yellow%[R]%reset%  %yellow%Перезапустить проводник%reset%
+echo %yellow%[R]%reset%  %yellow%Restart Explorer%reset%
 echo.
-echo %green%[A]%reset%  %green%Применить все настройки%reset%
-echo %red%[D]%reset%  %red%Вернуть как было%reset%
-echo %white%[0]%reset%  %white%Выход%reset%
+echo %green%[A]%reset%  %green%Apply All Settings%reset%
+echo %red%[D]%reset%  %red%Restore Defaults%reset%
+echo %white%[0]%reset%  %white%Exit%reset%
 echo.
 echo ================================================================================
 echo.
-set /p choice="%white%Введите номер пункта для изменения: %reset%"
+set /p choice="%white%Enter option number: %reset%"
 
 if "%choice%"=="1" call :SetExplorerOpen
 if "%choice%"=="2" call :ToggleHomeButton
@@ -83,372 +106,294 @@ if /i "%choice%"=="A" call :ApplyAllExplorer
 if /i "%choice%"=="D" call :RestoreExplorerDefaults
 if "%choice%"=="0" goto end
 
+call :CheckExplorerStatus
+timeout /t 1 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: ПРОВЕРКА ТЕКУЩИХ НАСТРОЕК
+:: STATUS CHECK - DIRECT PARSING (v2.0.0: IMPROVED RELIABILITY)
 :: ============================================================================
 :CheckExplorerStatus
-setlocal disabledelayedexpansion
-reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "LaunchTo" 2>nul | findstr /i "0x1" >nul 2>&1
-if %errorlevel% equ 0 (set "open_color=%green%" & set "open_status=Этот компьютер") else (set "open_color=%red%" & set "open_status=Главное")
+:: 1. Open Explorer (LaunchTo: 1=PC, 2=QuickAccess)
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "LaunchTo" 2>nul | find "0x1" >nul
+if %errorlevel% equ 0 (set "open_color=%green%" & set "open_status=This PC") else (set "open_color=%red%" & set "open_status=Home/Quick Access")
 
+:: 2. Home Button (Win11)
 if "%OS_TYPE%"=="win11" (
-    reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{f874310e-b6b7-47dc-bc84-b9e6b38f5903}" 2>nul | findstr /i "0x1" >nul 2>&1
-    if %errorlevel% equ 0 (set "home_color=%green%" & set "home_status=Скрыта") else (set "home_color=%red%" & set "home_status=Видна")
+    reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{f874310e-b6b7-47dc-bc84-b9e6b38f5903}" 2>nul | find "0x1" >nul
+    if %errorlevel% equ 0 (set "home_color=%green%" & set "home_status=Hidden") else (set "home_color=%red%" & set "home_status=Visible")
 ) else (
-    set "home_color=%yellow%" & set "home_status=Недоступно"
+    set "home_color=%yellow%" & set "home_status=N/A"
 )
 
+:: 3. Gallery Button (Win11)
 if "%OS_TYPE%"=="win11" (
-    reg query "HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" /v "System.IsPinnedToNameSpaceTree" 2>nul | findstr /i "0x0" >nul 2>&1
-    if %errorlevel% equ 0 (set "gallery_color=%green%" & set "gallery_status=Скрыта") else (set "gallery_color=%red%" & set "gallery_status=Видна")
+    reg query "HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "0x0" >nul
+    if %errorlevel% equ 0 (set "gallery_color=%green%" & set "gallery_status=Hidden") else (set "gallery_color=%red%" & set "gallery_status=Visible")
 ) else (
-    set "gallery_color=%yellow%" & set "gallery_status=Недоступно"
+    set "gallery_color=%yellow%" & set "gallery_status=N/A"
 )
 
-:: Кнопка "Сеть" – единый CLSID для всех версий
-reg query "HKCU\Software\Classes\CLSID\{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" /v "System.IsPinnedToNameSpaceTree" 2>nul | findstr /i "0x0" >nul 2>&1
-if %errorlevel% equ 0 (set "network_color=%green%" & set "network_status=Скрыта") else (set "network_color=%red%" & set "network_status=Видна")
+:: 4. Network Button
+reg query "HKCU\Software\Classes\CLSID\{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "0x0" >nul
+if %errorlevel% equ 0 (set "network_color=%green%" & set "network_status=Hidden") else (set "network_color=%red%" & set "network_status=Visible")
 
-reg query "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" 2>nul | findstr /i "0x1" >nul 2>&1
-if %errorlevel% equ 0 (set "navbin_color=%green%" & set "navbin_status=Включена") else (set "navbin_color=%red%" & set "navbin_status=Отключена")
+:: 5. Recycle Bin in Navigation
+reg query "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "0x1" >nul
+if %errorlevel% equ 0 (set "navbin_color=%green%" & set "navbin_status=Enabled") else (set "navbin_color=%red%" & set "navbin_status=Disabled")
 
-reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" 2>nul | findstr /i "0x1" >nul 2>&1
-if %errorlevel% equ 0 (set "desktopbin_color=%green%" & set "desktopbin_status=Скрыта") else (set "desktopbin_color=%red%" & set "desktopbin_status=Видна")
+:: 6. Recycle Bin on Desktop
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" 2>nul | find "0x0" >nul
+if %errorlevel% equ 0 (set "desktopbin_color=%green%" & set "desktopbin_status=Visible") else (set "desktopbin_color=%red%" & set "desktopbin_status=Hidden")
 
+:: 7. Compact View (Win11)
 if "%OS_TYPE%"=="win11" (
-    reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" 2>nul | findstr /i "0x1" >nul 2>&1
-    if %errorlevel% equ 0 (set "compact_color=%green%" & set "compact_status=Включен") else (set "compact_color=%red%" & set "compact_status=Отключен")
+    reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" 2>nul | find "0x1" >nul
+    if %errorlevel% equ 0 (set "compact_color=%green%" & set "compact_status=Enabled") else (set "compact_color=%red%" & set "compact_status=Disabled")
 ) else (
-    set "compact_color=%yellow%" & set "compact_status=Недоступно"
+    set "compact_color=%yellow%" & set "compact_status=N/A"
 )
 
-reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" 2>nul | findstr /i "0x0" >nul 2>&1
-if %errorlevel% equ 0 (set "recent_color=%green%" & set "recent_status=Отключены") else (set "recent_color=%red%" & set "recent_status=Включены")
+:: 8. Recent Folders
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" 2>nul | find "0x0" >nul
+if %errorlevel% equ 0 (set "recent_color=%green%" & set "recent_status=Disabled") else (set "recent_color=%red%" & set "recent_status=Enabled")
 
+:: 9. Context Menu (Win11 Classic)
 if "%OS_TYPE%"=="win11" (
-    reg query "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" >nul 2>&1
-    if %errorlevel% equ 0 (set "context_color=%green%" & set "context_status=Классическое") else (set "context_color=%red%" & set "context_status=Современное")
+    reg query "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" 2>nul | find /i "(Default)" >nul
+    if %errorlevel% equ 0 (set "context_color=%green%" & set "context_status=Classic") else (set "context_color=%red%" & set "context_status=Modern")
 ) else (
-    set "context_color=%yellow%" & set "context_status=Недоступно"
-)
-endlocal & (
-    set "open_color=%open_color%"
-    set "open_status=%open_status%"
-    set "home_color=%home_color%"
-    set "home_status=%home_status%"
-    set "gallery_color=%gallery_color%"
-    set "gallery_status=%gallery_status%"
-    set "network_color=%network_color%"
-    set "network_status=%network_status%"
-    set "navbin_color=%navbin_color%"
-    set "navbin_status=%navbin_status%"
-    set "desktopbin_color=%desktopbin_color%"
-    set "desktopbin_status=%desktopbin_status%"
-    set "compact_color=%compact_color%"
-    set "compact_status=%compact_status%"
-    set "recent_color=%recent_color%"
-    set "recent_status=%recent_status%"
-    set "context_color=%context_color%"
-    set "context_status=%context_status%"
+    set "context_color=%yellow%" & set "context_status=N/A"
 )
 goto :eof
 
 :: ============================================================================
-:: ОТДЕЛЬНЫЕ ФУНКЦИИ ПЕРЕКЛЮЧЕНИЯ
+:: SAFE EXPLORER RESTART (v1.11 PATTERN - PREVENTS EXTRA WINDOWS)
+:: ============================================================================
+:RestartExplorer
+echo.
+echo %yellow%[*] RESTARTING EXPLORER...%reset%
+echo ================================================================================
+echo [*] Stopping Explorer...
+taskkill /IM explorer.exe >nul 2>&1
+timeout /t 1 /nobreak >nul
+echo [*] Starting Explorer...
+start explorer.exe
+timeout /t 1 /nobreak >nul
+echo.
+echo ================================================================================
+echo %green%     EXPLORER RESTARTED%reset%
+echo ================================================================================
+echo [%date% %time%] [%EXEC_MODE%] Explorer Restarted >> "%LOG_FILE%"
+timeout /t 2 /nobreak >nul
+goto menu
+
+:: ============================================================================
+:: APPLY FUNCTIONS
 :: ============================================================================
 :SetExplorerOpen
-echo [*] Настройка открытия проводника...
+echo.
+echo [*] Setting Explorer to "This PC"...
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "LaunchTo" /t REG_DWORD /d "1" /f >nul
-echo [+] Проводник теперь открывается в "Этот компьютер"
+echo [+] Done!
+echo [%date% %time%] [%EXEC_MODE%] Set LaunchTo=1 >> "%LOG_FILE%"
 call :CheckExplorerStatus
 timeout /t 1 /nobreak >nul
 goto menu
 
 :ToggleHomeButton
-if "%OS_TYPE%"=="win10" (
-    echo [!] Эта функция доступна только в Windows 11
-    timeout /t 2 /nobreak >nul
-    goto menu
-)
-echo [*] Переключение кнопки "Главное"...
+if "%OS_TYPE%"=="win10" goto Unsupported
+echo [*] Toggling "Home" Button...
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{f874310e-b6b7-47dc-bc84-b9e6b38f5903}" /t REG_DWORD /d "1" /f >nul
-echo [+] Кнопка "Главное" скрыта
+echo [+] Home Button Hidden!
+echo [%date% %time%] [%EXEC_MODE%] Hidden Home Button >> "%LOG_FILE%"
 call :CheckExplorerStatus
 timeout /t 1 /nobreak >nul
 goto menu
 
 :ToggleGalleryButton
-if "%OS_TYPE%"=="win10" (
-    echo [!] Эта функция доступна только в Windows 11
-    timeout /t 2 /nobreak >nul
-    goto menu
-)
-echo [*] Переключение кнопки "Галерея"...
+if "%OS_TYPE%"=="win10" goto Unsupported
+echo [*] Toggling "Gallery" Button...
 reg add "HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" /v "System.IsPinnedToNameSpaceTree" /t REG_DWORD /d "0" /f >nul
-echo [+] Кнопка "Галерея" скрыта
+echo [+] Gallery Button Hidden!
+echo [%date% %time%] [%EXEC_MODE%] Hidden Gallery Button >> "%LOG_FILE%"
 call :CheckExplorerStatus
 timeout /t 1 /nobreak >nul
 goto menu
 
 :ToggleNetworkButton
-echo [*] Переключение кнопки "Сеть"...
+echo [*] Toggling "Network" Button...
 reg add "HKCU\Software\Classes\CLSID\{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" /v "System.IsPinnedToNameSpaceTree" /t REG_DWORD /d "0" /f >nul
-echo [+] Кнопка "Сеть" скрыта
+echo [+] Network Button Hidden!
+echo [%date% %time%] [%EXEC_MODE%] Hidden Network Button >> "%LOG_FILE%"
 call :CheckExplorerStatus
 timeout /t 1 /nobreak >nul
 goto menu
 
 :ToggleNavBin
-echo [*] Включение корзины в панели навигации...
+echo [*] Enabling Recycle Bin in Navigation...
 reg add "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" /t REG_DWORD /d "1" /f >nul
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "0" /f >nul
-echo [+] Корзина добавлена в панель навигации
+echo [+] Recycle Bin Added to Navigation!
+echo [%date% %time%] [%EXEC_MODE%] Enabled NavBin >> "%LOG_FILE%"
 call :CheckExplorerStatus
 timeout /t 1 /nobreak >nul
 goto menu
 
 :ToggleDesktopBin
-echo [*] Скрытие корзины с рабочего стола...
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "1" /f >nul
-echo [+] Корзина скрыта с рабочего стола
+echo [*] Showing Recycle Bin on Desktop...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "0" /f >nul
+echo [+] Recycle Bin Visible on Desktop!
+echo [%date% %time%] [%EXEC_MODE%] Showed DesktopBin >> "%LOG_FILE%"
 call :CheckExplorerStatus
 timeout /t 1 /nobreak >nul
 goto menu
 
 :ToggleCompactView
-if "%OS_TYPE%"=="win10" (
-    echo [!] Эта функция доступна только в Windows 11
-    timeout /t 2 /nobreak >nul
-    goto menu
-)
-echo [*] Включение компактного вида...
+if "%OS_TYPE%"=="win10" goto Unsupported
+echo [*] Enabling Compact View...
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" /t REG_DWORD /d "1" /f >nul
-echo [+] Компактный вид включен
+echo [+] Compact View Enabled!
+echo [%date% %time%] [%EXEC_MODE%] Enabled CompactView >> "%LOG_FILE%"
 call :CheckExplorerStatus
 timeout /t 1 /nobreak >nul
 goto menu
 
 :ToggleRecentFolders
-echo [*] Отключение частых папок...
-if "%OS_TYPE%"=="win11" (
-    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" /t REG_DWORD /d "0" /f >nul
-) else (
-    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" /t REG_DWORD /d "0" /f >nul
+echo [*] Disabling Recent Folders...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" /t REG_DWORD /d "0" /f >nul
+if "%OS_TYPE%"=="win10" (
     reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul
-    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackProgs" /t REG_DWORD /d "0" /f >nul
 )
-echo [+] Частые папки отключены
+echo [+] Recent Folders Disabled!
+echo [%date% %time%] [%EXEC_MODE%] Disabled Recent >> "%LOG_FILE%"
 call :CheckExplorerStatus
 timeout /t 1 /nobreak >nul
 goto menu
 
 :ToggleContextMenu
-if "%OS_TYPE%"=="win10" (
-    echo [!] Эта функция доступна только в Windows 11
-    timeout /t 2 /nobreak >nul
-    goto menu
-)
-echo [*] Переключение контекстного меню...
+if "%OS_TYPE%"=="win10" goto Unsupported
+echo [*] Switching to Classic Context Menu...
 reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /ve /t REG_SZ /d "" /f >nul
-echo [+] Контекстное меню изменено на классическое
+echo [+] Context Menu Changed to Classic!
+echo [%date% %time%] [%EXEC_MODE%] Enabled Classic Context >> "%LOG_FILE%"
 call :CheckExplorerStatus
 timeout /t 1 /nobreak >nul
 goto menu
 
-:: ============================================================================
-:: ПЕРЕЗАПУСК ПРОВОДНИКА
-:: ============================================================================
-:RestartExplorer
-cls
+:Unsupported
 echo.
-echo %yellow%[*] ПЕРЕЗАПУСК ПРОВОДНИКА...%reset%
-echo ================================================================================
-echo.
-echo [*] Остановка проводника...
-taskkill /F /IM explorer.exe >nul 2>&1
-timeout /t 1 /nobreak >nul
-
-echo [*] Запуск проводника...
-start explorer.exe
+echo [!] This feature is only available in Windows 11.
 timeout /t 2 /nobreak >nul
-
-echo.
-echo ================================================================================
-echo %green%     ПРОВОДНИК ПЕРЕЗАПУЩЕН%reset%
-echo ================================================================================
-echo.
-echo %yellow%  Изменения должны вступить в силу.%reset%
-echo     Если что-то не применилось, перезапустите компьютер.
-echo.
-timeout /t 3 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: ПРИМЕНИТЬ ВСЕ НАСТРОЙКИ (ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ ВЕРСИЯ)
+:: APPLY ALL & RESTORE
 :: ============================================================================
 :ApplyAllExplorer
-setlocal disabledelayedexpansion
 cls
-echo %green%[*] ПРИМЕНЕНИЕ ВСЕХ НАСТРОЕК ПРОВОДНИКА...%reset%
+echo %green%[*] APPLYING ALL EXPLORER SETTINGS...%reset%
 echo ================================================================================
-echo.
+set "EXEC_MODE=APPLY_ALL"
+echo [%date% %time%] [%EXEC_MODE%] Batch execution started >> "%LOG_FILE%"
 
-echo [ 1/9] Открытие в "Этот компьютер"...
+echo [ 1/9] Open to "This PC"...
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "LaunchTo" /t REG_DWORD /d "1" /f >nul 2>&1
-if errorlevel 1 echo     ^> Предупреждение: ошибка 1/9
 
-if "%OS_TYPE%"=="win11" (
-    echo [ 2/9] Скрытие кнопки "Главное"...
-    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{f874310e-b6b7-47dc-bc84-b9e6b38f5903}" /t REG_DWORD /d "1" /f >nul 2>&1
-    if errorlevel 1 echo     ^> Предупреждение: ошибка 2/9
+echo [ 2/9] Hide "Home" Button...
+if "%OS_TYPE%"=="win11" reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{f874310e-b6b7-47dc-bc84-b9e6b38f5903}" /t REG_DWORD /d "1" /f >nul 2>&1
 
-    echo [ 3/9] Скрытие кнопки "Галерея"...
-    reg add "HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" /v "System.IsPinnedToNameSpaceTree" /t REG_DWORD /d "0" /f >nul 2>&1
-    if errorlevel 1 echo     ^> Предупреждение: ошибка 3/9
+echo [ 3/9] Hide "Gallery" Button...
+if "%OS_TYPE%"=="win11" reg add "HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" /v "System.IsPinnedToNameSpaceTree" /t REG_DWORD /d "0" /f >nul 2>&1
 
-    echo [ 4/9] Скрытие кнопки "Сеть"...
-    reg add "HKCU\Software\Classes\CLSID\{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" /v "System.IsPinnedToNameSpaceTree" /t REG_DWORD /d "0" /f >nul 2>&1
-    if errorlevel 1 echo     ^> Предупреждение: ошибка 4/9
+echo [ 4/9] Hide "Network" Button...
+reg add "HKCU\Software\Classes\CLSID\{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" /v "System.IsPinnedToNameSpaceTree" /t REG_DWORD /d "0" /f >nul 2>&1
 
-    echo [ 7/9] Включение компактного вида...
-    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" /t REG_DWORD /d "1" /f >nul 2>&1
-    if errorlevel 1 echo     ^> Предупреждение: ошибка 7/9
-
-    echo [ 9/9] Классическое контекстное меню...
-    reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /ve /t REG_SZ /d "" /f >nul 2>&1
-    if errorlevel 1 echo     ^> Предупреждение: ошибка 9/9
-) else (
-    echo [ 2/9] Пропуск (Win10): Кнопка "Главное"
-    echo [ 3/9] Пропуск (Win10): Кнопка "Галерея"
-
-    echo [ 4/9] Скрытие кнопки "Сеть"...
-    reg add "HKCU\Software\Classes\CLSID\{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" /v "System.IsPinnedToNameSpaceTree" /t REG_DWORD /d "0" /f >nul 2>&1
-    if errorlevel 1 echo     ^> Предупреждение: ошибка 4/9
-
-    echo [ 9/9] Пропуск (Win10): Контекстное меню
-)
-
-echo [ 5/9] Корзина в панели навигации...
+echo [ 5/9] Enable Recycle Bin in Navigation...
 reg add "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" /t REG_DWORD /d "1" /f >nul 2>&1
-if errorlevel 1 echo     ^> Предупреждение: ошибка 5/9 (панель)
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "0" /f >nul 2>&1
-if errorlevel 1 echo     ^> Предупреждение: ошибка 5/9 (рабочий стол)
 
-echo [ 6/9] Скрытие корзины с рабочего стола...
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "1" /f >nul 2>&1
-if errorlevel 1 echo     ^> Предупреждение: ошибка 6/9
+echo [ 6/9] Show Recycle Bin on Desktop...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "0" /f >nul 2>&1
 
-echo [ 8/9] Отключение частых папок...
-if "%OS_TYPE%"=="win11" (
-    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" /t REG_DWORD /d "0" /f >nul 2>&1
-    if errorlevel 1 echo     ^> Предупреждение: ошибка 8/9
-) else (
-    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" /t REG_DWORD /d "0" /f >nul 2>&1
-    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul 2>&1
-    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackProgs" /t REG_DWORD /d "0" /f >nul 2>&1
-    if errorlevel 1 echo     ^> Предупреждение: ошибка 8/9
-)
+echo [ 7/9] Enable Compact View...
+if "%OS_TYPE%"=="win11" reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" /t REG_DWORD /d "1" /f >nul 2>&1
 
+echo [ 8/9] Disable Recent Folders...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" /t REG_DWORD /d "0" /f >nul 2>&1
+if "%OS_TYPE%"=="win10" reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul 2>&1
+
+echo [ 9/9] Classic Context Menu...
+if "%OS_TYPE%"=="win11" reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /ve /t REG_SZ /d "" /f >nul 2>&1
+
+call :RestartExplorer
 echo.
 echo ================================================================================
-echo %green%     ВСЕ НАСТРОЙКИ ПРИМЕНЕНЫ%reset%
+echo %green%     ALL SETTINGS APPLIED!%reset%
 echo ================================================================================
-echo.
-echo %yellow%Для полного вступления изменений в силу:%reset%
-echo %yellow%  - перезапустите проводник (пункт [R])%reset%
-echo %yellow%  - или перезагрузите компьютер.%reset%
-echo.
-pause
-endlocal
-call :CheckExplorerStatus
+echo [%date% %time%] [%EXEC_MODE%] Batch execution completed >> "%LOG_FILE%"
+set "EXEC_MODE=MANUAL"
+timeout /t 2 /nobreak >nul
 goto menu
 
-:: ============================================================================
-:: ВОССТАНОВЛЕНИЕ НАСТРОЕК ПО УМОЛЧАНИЮ
-:: ============================================================================
 :RestoreExplorerDefaults
-setlocal disabledelayedexpansion
 cls
-echo %red%[!] ВОССТАНОВЛЕНИЕ НАСТРОЕК ПРОВОДНИКА%reset%
-echo.
-set /p confirm="Вы уверены? (Y/N): "
+echo %red%[!] RESTORING EXPLORER DEFAULTS%reset%
+set /p confirm="Are you sure? (Y/N): "
 if /i not "%confirm%"=="Y" goto menu
-
 echo.
-echo [*] Восстановление настроек...
+echo [*] Restoring defaults...
 echo ================================================================================
-echo.
+set "EXEC_MODE=RESTORE_DEFAULTS"
+echo [%date% %time%] [%EXEC_MODE%] Restoration started >> "%LOG_FILE%"
 
-echo [ 1/9] Открытие в "Главное"...
+echo [ 1/9] Open to Home/Quick Access...
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "LaunchTo" /f >nul 2>&1
 
-if "%OS_TYPE%"=="win11" (
-    echo [ 2/9] Показ кнопки "Главное"...
-    reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{f874310e-b6b7-47dc-bc84-b9e6b38f5903}" /f >nul 2>&1
-    echo [ 3/9] Показ кнопки "Галерея"...
-    reg delete "HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" /v "System.IsPinnedToNameSpaceTree" /f >nul 2>&1
-) else (
-    echo [ 2/9] Пропуск (Win10): Кнопка "Главное"
-    echo [ 3/9] Пропуск (Win10): Кнопка "Галерея"
-)
+echo [ 2/9] Show "Home" Button...
+if "%OS_TYPE%"=="win11" reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{f874310e-b6b7-47dc-bc84-b9e6b38f5903}" /f >nul 2>&1
 
-echo [ 4/9] Показ кнопки "Сеть"...
+echo [ 3/9] Show "Gallery" Button...
+if "%OS_TYPE%"=="win11" reg delete "HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" /v "System.IsPinnedToNameSpaceTree" /f >nul 2>&1
+
+echo [ 4/9] Show "Network" Button...
 reg delete "HKCU\Software\Classes\CLSID\{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" /v "System.IsPinnedToNameSpaceTree" /f >nul 2>&1
 
-echo [ 5/9] Отключение корзины в навигации...
+echo [ 5/9] Disable Recycle Bin in Navigation...
 reg delete "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /f >nul 2>&1
 
-echo [ 6/9] Показ корзины на рабочем столе...
-reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /f >nul 2>&1
+echo [ 6/9] Hide Recycle Bin from Desktop...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "1" /f >nul 2>&1
 
-if "%OS_TYPE%"=="win11" (
-    echo [ 7/9] Отключение компактного вида...
-    reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" /f >nul 2>&1
-) else (
-    echo [ 7/9] Пропуск (Win10): Компактный вид
-)
+echo [ 7/9] Disable Compact View...
+if "%OS_TYPE%"=="win11" reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" /f >nul 2>&1
 
-echo [ 8/9] Включение частых папок...
+echo [ 8/9] Enable Recent Folders...
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" /f >nul 2>&1
 if "%OS_TYPE%"=="win10" (
     reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /f >nul 2>&1
-    reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackProgs" /f >nul 2>&1
 )
 
-if "%OS_TYPE%"=="win11" (
-    echo [ 9/9] Современное контекстное меню...
-    reg delete "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" /f >nul 2>&1
-) else (
-    echo [ 9/9] Пропуск (Win10): Контекстное меню
-)
+echo [ 9/9] Restore Modern Context Menu...
+if "%OS_TYPE%"=="win11" reg delete "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" /f >nul 2>&1
 
+call :RestartExplorer
 echo.
 echo ================================================================================
-echo %green%     НАСТРОЙКИ ВОССТАНОВЛЕНЫ%reset%
+echo %green%     DEFAULTS RESTORED!%reset%
 echo ================================================================================
-echo.
-echo %yellow%  Для применения изменений необходимо перезапустить проводник.%reset%
-echo.
-set /p restart="Перезапустить проводник сейчас? (Y/N): "
-if /i "%restart%"=="Y" (
-    call :RestartExplorer
-) else (
-    echo [*] Перезапустите проводник позже через меню [R].
-    timeout /t 2 /nobreak >nul
-)
-endlocal
-call :CheckExplorerStatus
+echo [%date% %time%] [%EXEC_MODE%] Restoration completed >> "%LOG_FILE%"
+set "EXEC_MODE=MANUAL"
+timeout /t 2 /nobreak >nul
 goto menu
 
 :end
 cls
 echo.
-echo %blue%Explorer Config v1.5%reset%
+echo %blue%Explorer Config v2.0.0%reset%
 echo.
-echo Спасибо за использование.
-echo.
+echo Thank you for using.
+echo Log: %LOG_FILE%
 timeout /t 2 /nobreak >nul
 exit

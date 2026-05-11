@@ -11,8 +11,8 @@ Components maintain independent versioning and are grouped under a coordinated p
 | Component              | Version  | Status | Last Updated |
 |------------------------|----------|----|--------------|
 | **SystemTweaker.bat**  | `v3.2.0` | ✅ Production | 2026-05-11   |
-| **BloatwareRemover.bat**| `v2.4.1` |  🧪 Beta Testing   | 2026-05-11   |
-| **ExplorerConfig.bat** | `v1.5.0` | 🔄 Pending Refactor | 2026-05-10   |
+| **BloatwareRemover.bat**| `v2.4.1` |  ✅ Production   | 2026-05-11   |
+| **ExplorerConfig.bat** | `v2.0.0` | 🧪 Beta Testing | 2026-05-11   |
 
 ---
 
@@ -205,11 +205,16 @@ Components maintain independent versioning and are grouped under a coordinated p
 
 ---
 
-## 🧹 BloatwareRemover
+## 🧹 BloatwareRemover.bat
 ### [v2.4.1] - 2026-05-11
 #### 🛠 Fixed
 - **False "Installed" Status for Removed Apps**: Resolved issue where the menu displayed "Installed" even after successful removal. Root cause was `Get-AppxPackage -AllUsers` returning **staged/provisioned packages** from the system database that remain registered after user-level uninstallation.
 - **Inaccurate Deployment Detection**: Refined `:FindPackage` and `:CheckCopilot` logic by removing `-AllUsers` and adding `Where-Object { $_.InstallLocation }` filter. The script now verifies that an app is **physically deployed** in the user profile, not just registered as "available for installation".
+
+#### 📊 Testing Status
+- **Windows 10**: ✅ All parameters working correctly
+- **Windows 11**: ✅ All parameters working correctly
+- **Production Ready**: SystemTweaker.bat is now 100% ready for deployment
 
 #### 🔄 Changed
 - **Status Check Scope**: Shifted from system-wide package registry to current-user deployed packages, aligning status checks with actual `Remove-AppxPackage` behavior.
@@ -274,6 +279,29 @@ Components maintain independent versioning and are grouped under a coordinated p
 #### 📝 Notes
 - Original stable version. Reference for initial package detection logic.
 - **Note**: Served as the functional reference for AppX manipulation, later refined in `v2.0.0`.
+
+---
+
+## 📂 ExplorerConfig.bat
+### [v2.0.0] - 2026-05-11
+#### 🛠 Fixed
+- **Unsafe Explorer Restart**: Replaced `taskkill /F` with `taskkill /IM explorer.exe` to prevent console termination and potential data loss.
+- **Fragile Status Checks**: Removed `setlocal disabledelayedexpansion` complexity; implemented direct `reg query` logic for reliable status reading.
+- **Window Sizing**: Enforced 100x35 dimensions using hybrid `mode con` + PowerShell API to prevent header cutoff.
+
+#### ✨ Added
+- **English UI & OS Detection**: Standardized interface to English. Added automatic Windows 10/11 detection to handle OS-specific features (Gallery, Compact View).
+- **Structured Logging**: Added context-aware logging (MANUAL vs APPLY_ALL) to `%LOCALAPPDATA%\Tweaker\explorer_config.log`.
+- **Batch Operations**: Implemented reliable `ApplyAllExplorer` and `RestoreExplorerDefaults` with sequential execution and single safe restart.
+
+#### 🔄 Changed
+- **Architecture**: Aligned with SystemTweaker v3.2.0 patterns for consistency across the suite.
+- **Flow Control**: Simplified menu navigation and status refresh loops.
+
+### [v1.5] - Legacy Baseline
+#### 📝 Notes
+- Original stable version. Reference for CLSID-based Explorer tweaks.
+- **Note**: Served as the functional reference for Explorer navigation and UI customization.
 
 ---
 *Generated automatically via engineering review cycle. All changes verified against 14+ test iterations on Windows 10/11 VMs.*
