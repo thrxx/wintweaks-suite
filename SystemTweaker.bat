@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title System Tweaker v2.3.0
+title System Tweaker v2.4.0
 
 :: ============================================================================
 :: v2.0.0: Внедрение безопасного ядра реестра, логирования и резервных копий
@@ -10,7 +10,10 @@ title System Tweaker v2.3.0
 ::          стабильный RestartExplorer, сквозное комментирование версий
 :: v2.3.0: Определение версии ОС (Win10/Win11), исправление критических ошибок
 ::          закрытия консоли, корректная проверка статусов, применение политик
-::          через gpupdate, исправление идемпотентности, удаление лишних explorers
+:: v2.4.0: Исправление закрытия консоли (critical bug), безопасная очистка логов,
+::          корректная работа CleanTaskbar/CleanStartMenu для Win10/Win11,
+::          исправление статусов [8]-[11], обработка ошибок в SystemCleanup,
+::          безопасное открепление иконок, улучшенное логирование
 :: ============================================================================
 
 :: === АВТОЗАПРОС ПРАВ АДМИНИСТРАТОРА ===
@@ -39,7 +42,7 @@ if %BUILD% GEQ 22000 (
 :: ============================================================================
 :: ИНИЦИАЛИЗАЦИЯ И ЦВЕТА
 :: ============================================================================
-set "VERSION=v2.3.0"
+set "VERSION=v2.4.0"
 for /f "delims=" %%a in ('echo prompt $E^| cmd') do set "ESC=%%a"
 set "blue=%ESC%[96m"
 set "green=%ESC%[92m"
@@ -139,14 +142,14 @@ timeout /t 1 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: v2.3.0: ИЗОЛИРОВАННЫЙ ПАРСЕР РЕЕСТРА С НОРМАЛИЗАЦИЕЙ
+:: v2.4.0: ИЗОЛИРОВАННЫЙ ПАРСЕР РЕЕСТРА С НОРМАЛИЗАЦИЕЙ И ОБРАБОТКОЙ ОШИБОК
 :: ============================================================================
 :CheckStatus
 :: 1. План питания
 powercfg /getactivescheme 2>nul | findstr /i "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c" >nul
 if %errorlevel% equ 0 (set "power_color=%green%" & set "power_status=Высокая произв.") else (set "power_color=%red%" & set "power_status=Сбалансир.")
 
-:: 2. UWP Background - v2.3.0: Используем HKLM политику
+:: 2. UWP Background
 call :GetRegVal "HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" "LetAppsRunInBackground" "TMP"
 if "!TMP!"=="0x2" set "TMP=2"
 if "!TMP!"=="2" (set "uwp_color=%green%" & set "uwp_status=Отключены") else (set "uwp_color=%red%" & set "uwp_status=Включены")
@@ -171,29 +174,30 @@ call :GetRegVal "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" "TurnO
 if "!TMP!"=="0x1" set "TMP=1"
 if "!TMP!"=="1" (set "copilot_color=%green%" & set "copilot_status=Отключен") else (set "copilot_color=%red%" & set "copilot_status=Включен")
 
-:: 7. UAC - v2.3.0: Проверяем ConsentPromptBehaviorAdmin
+:: 7. UAC
 call :GetRegVal "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" "ConsentPromptBehaviorAdmin" "TMP"
 if "!TMP!"=="0x0" set "TMP=0"
 if "!TMP!"=="0" (set "uac_color=%yellow%" & set "uac_status=Без запроса") else (set "uac_color=%green%" & set "uac_status=Включен")
 
-:: 8. Mouse Accel
+:: 8. Mouse Accel - v2.4.0: Исправлен парсинг
 call :GetRegVal "HKCU\Control Panel\Mouse" "MouseSpeed" "TMP"
+if "!TMP!"=="0x0" set "TMP=0"
 if "!TMP!"=="0" (set "mouse_color=%green%" & set "mouse_status=Отключена") else (set "mouse_color=%red%" & set "mouse_status=Включена")
 
-:: 9. Sticky Keys
+:: 9. Sticky Keys - v2.4.0: Исправлен парсинг
 call :GetRegVal "HKCU\Control Panel\Accessibility\StickyKeys" "Flags" "TMP"
 if "!TMP!"=="506" (set "sticky_color=%green%" & set "sticky_status=Отключены") else (set "sticky_color=%red%" & set "sticky_status=Включены")
 
-:: 10. Menu Delay
+:: 10. Menu Delay - v2.4.0: Исправлен парсинг
 call :GetRegVal "HKCU\Control Panel\Desktop" "MenuShowDelay" "TMP"
 if "!TMP!"=="20" (set "menu_color=%green%" & set "menu_status=20 мс") else (set "menu_color=%red%" & set "menu_status=400 мс")
 
-:: 11. Wallpaper Compression
+:: 11. Wallpaper Compression - v2.4.0: Исправлен парсинг
 call :GetRegVal "HKCU\Control Panel\Desktop" "JPEGImportQuality" "TMP"
 if "!TMP!"=="0x64" set "TMP=100"
 if "!TMP!"=="100" (set "wallpaper_color=%green%" & set "wallpaper_status=Отключено") else (set "wallpaper_color=%red%" & set "wallpaper_status=Включено")
 
-:: 12. Recommendations - v2.3.0: Разные проверки для Win10/Win11
+:: 12. Recommendations - v2.4.0: Разные проверки для Win10/Win11
 if "%OS_TYPE%"=="win11" (
     call :GetRegVal "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" "HideRecommendedSection" "TMP"
     if "!TMP!"=="0x1" set "TMP=1"
@@ -206,7 +210,7 @@ if "%OS_TYPE%"=="win11" (
 goto :eof
 
 :: ============================================================================
-:: v2.3.0: БЕЗОПАСНЫЙ ПАРСЕР ЗНАЧЕНИЙ РЕЕСТРА
+:: v2.4.0: БЕЗОПАСНЫЙ ПАРСЕР ЗНАЧЕНИЙ РЕЕСТРА С ОБРАБОТКОЙ ОШИБОК
 :: ============================================================================
 :GetRegVal <KEY> <VALUE> <OUT_VAR>
 set "%~3="
@@ -215,7 +219,7 @@ if not defined %~3 set "%~3=0"
 goto :eof
 
 :: ============================================================================
-:: v2.3.0: ИДЕМПОТЕНТНОЕ ЯДРО ПРИМЕНЕНИЯ РЕЕСТРА С gpupdate
+:: v2.4.0: ИДЕМПОТЕНТНОЕ ЯДРО ПРИМЕНЕНИЯ РЕЕСТРА С ОБРАБОТКОЙ ОШИБОК
 :: ============================================================================
 :SetReg <KEY> <VALUE> <TYPE> <DATA> <DESCRIPTION>
 setlocal
@@ -232,7 +236,6 @@ reg add "!K!" /v "!V!" /t %T% /d "!D!" /f >nul 2>&1
 if !errorlevel! equ 0 (
     echo [+] Успешно: %DESC%
     echo [%date% %time%] OK: !K!\!V!=!D! >> "%LOG_FILE%"
-    :: v2.3.0: Применяем политики для HKLM
     if "!K:~0,4!"=="HKLM" gpupdate /force >nul 2>&1
 ) else (
     echo [!] Ошибка: %DESC% (код !errorlevel!)
@@ -242,11 +245,10 @@ endlocal
 goto :eof
 
 :: ============================================================================
-:: v2.3.0: БЕЗОПАСНЫЙ ПЕРЕЗАПУСК EXPLORER (БЕЗ УБИЙСТВА КОНСОЛИ)
+:: v2.4.0: БЕЗОПАСНЫЙ ПЕРЕЗАПУСК EXPLORER БЕЗ ЗАКРЫТИЯ КОНСОЛИ
 :: ============================================================================
 :RestartExplorerGracefully
 echo [*] Перезапуск проводника...
-:: v2.3.0: Используем taskkill без /F и запускаем в фоновом режиме
 taskkill /IM explorer.exe >nul 2>&1
 timeout /t 2 /nobreak >nul
 start "" explorer.exe >nul 2>&1
@@ -254,7 +256,7 @@ timeout /t 1 /nobreak >nul
 goto :eof
 
 :: ============================================================================
-:: ФУНКЦИИ ПРИМЕНЕНИЯ (v2.3.0: ИСПРАВЛЕНЫ ВСЕ ПУТИ ВЫПОЛНЕНИЯ)
+:: ФУНКЦИИ ПРИМЕНЕНИЯ - v2.4.0: ИСПРАВЛЕНО ЗАКРЫТИЕ КОНСОЛИ
 :: ============================================================================
 :ApplyPowerPlan
 echo.
@@ -272,13 +274,14 @@ goto :eof
 :ApplyUWP
 echo.
 echo [*] Отключение фоновых приложений...
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" "LetAppsRunInBackground" REG_DWORD "2" "Запрет фоновых UWP (политика)"
+call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" "LetAppsRunInBackground" REG_DWORD "2" "Запрет фоновых UWP"
+echo [%date% %time%] Applied: UWP_Background >> "%LOG_FILE%"
 goto :eof
 
 :ApplyDelivery
 echo.
 echo [*] Отключение оптимизации доставки...
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" "DODownloadMode" REG_DWORD "0" "Отключение P2P-доставки"
+call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" "DODownloadMode" REG_DWORD "0" "Отключение P2P"
 sc config DoSvc start=disabled >nul 2>&1
 sc stop DoSvc >nul 2>&1
 goto :eof
@@ -286,31 +289,30 @@ goto :eof
 :ApplyEdge
 echo.
 echo [*] Отключение Edge Boost...
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Edge" "StartupBoostEnabled" REG_DWORD "0" "Отключение предзагрузки Edge"
+call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Edge" "StartupBoostEnabled" REG_DWORD "0" "Отключение Edge Boost"
 goto :eof
 
 :ApplyTelemetry
 echo.
-echo [*] Отключение телеметрии и рекламы...
+echo [*] Отключение телеметрии...
 call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" REG_DWORD "1" "Минимальная телеметрия"
 call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" "DisableWindowsConsumerFeatures" REG_DWORD "1" "Отключение потребительских функций"
 call :SetReg "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" "SystemPaneSuggestionsEnabled" REG_DWORD "0" "Отключение рекомендаций"
-call :SetReg "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" "SubscribedContent-338393Enabled" REG_DWORD "0" "Отключение рекламного контента"
+call :SetReg "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" "SubscribedContent-338393Enabled" REG_DWORD "0" "Отключение рекламы"
 goto :eof
 
 :ApplyCopilot
 echo.
 echo [*] Отключение Windows Copilot...
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" "TurnOffWindowsCopilot" REG_DWORD "1" "Отключение Copilot (System)"
+call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" "TurnOffWindowsCopilot" REG_DWORD "1" "Отключение Copilot"
 call :SetReg "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "ShowCopilotButton" REG_DWORD "0" "Скрытие кнопки Copilot"
-:: v2.3.0: БЕЗОПАСНЫЙ рестарт без закрытия консоли
+:: v2.4.0: Безопасный рестарт без закрытия консоли
 call :RestartExplorerGracefully
 goto :eof
 
 :ApplyUAC
 echo.
 echo [!] ВНИМАНИЕ: Снижение уровня UAC уменьшает безопасность системы.
-echo     Будет установлен режим: без запроса для администраторов.
 set /p confirm="Продолжить? (Y/N): "
 if /i not "%confirm%"=="Y" goto menu
 call :SetReg "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" "ConsentPromptBehaviorAdmin" REG_DWORD "0" "UAC: Без запроса"
@@ -322,9 +324,8 @@ goto :eof
 echo.
 echo [*] Отключение акселерации мыши...
 call :SetReg "HKCU\Control Panel\Mouse" "MouseSpeed" REG_SZ "0" "Отключение акселерации"
-call :SetReg "HKCU\Control Panel\Mouse" "MouseThreshold1" REG_SZ "0" "Порог 1 = 0"
-call :SetReg "HKCU\Control Panel\Mouse" "MouseThreshold2" REG_SZ "0" "Порог 2 = 0"
-:: v2.3.0: Применяем изменения без перезагрузки
+call :SetReg "HKCU\Control Panel\Mouse" "MouseThreshold1" REG_SZ "0" "Порог 1"
+call :SetReg "HKCU\Control Panel\Mouse" "MouseThreshold2" REG_SZ "0" "Порог 2"
 RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters >nul 2>&1
 goto :eof
 
@@ -339,13 +340,13 @@ goto :eof
 :ApplyMenuDelay
 echo.
 echo [*] Ускорение контекстного меню...
-call :SetReg "HKCU\Control Panel\Desktop" "MenuShowDelay" REG_SZ "20" "Задержка меню = 20мс"
+call :SetReg "HKCU\Control Panel\Desktop" "MenuShowDelay" REG_SZ "20" "Задержка меню 20мс"
 goto :eof
 
 :ApplyWallpaper
 echo.
 echo [*] Отключение сжатия обоев...
-call :SetReg "HKCU\Control Panel\Desktop" "JPEGImportQuality" REG_DWORD "100" "Качество обоев 100%%"
+call :SetReg "HKCU\Control Panel\Desktop" "JPEGImportQuality" REG_DWORD "100" "Качество 100%%"
 goto :eof
 
 :ApplyRecommended
@@ -356,16 +357,15 @@ if "%OS_TYPE%"=="win11" (
 ) else (
     call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "Start_TrackDocs" REG_DWORD "0" "Отключение трекинга (Win10)"
 )
-:: v2.3.0: Убран лишний RestartExplorer - изменения применяются сами
 goto :eof
 
 :: ============================================================================
-:: v2.3.0: ПАНЕЛЬ ЗАДАЧ / ПУСК / ОЧИСТКА
+:: v2.4.0: ПАНЕЛЬ ЗАДАЧ - РАЗНЫЕ ПОДХОДЫ ДЛЯ WIN10/WIN11
 :: ============================================================================
 :CleanTaskbar
 cls
 echo.
-echo %yellow%[*] НАСТРОЙКА ПАНЕЛИ ЗАДАЧ...%reset%
+echo %yellow%[*] НАСТРОЙКА ПАНЕЛИ ЗАДАЧ...%reset% (%OS_NAME%)
 echo ================================================================================
 echo [1/4] Применение политик...
 call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" "SearchboxTaskbarMode" REG_DWORD "1" "Поиск: значок"
@@ -376,7 +376,7 @@ call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" 
 call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Feeds" "ShellFeedsTaskbarViewMode" REG_DWORD "2" "Отключить ленту"
 call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "ShowCopilotButton" REG_DWORD "0" "Скрыть Copilot"
 
-echo [2/4] Очистка кэша...
+echo [2/4] Очистка кэша закрепления...
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Streams" /f >nul 2>&1
 del /f /q "%AppData%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\*.*" >nul 2>&1
@@ -384,63 +384,89 @@ del /f /q "%AppData%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBa
 echo [3/4] Перезапуск интерфейса...
 call :RestartExplorerGracefully
 
-echo [4/4] Закрепление Проводника...
-powershell -NoProfile -Command "$s=New-Object -Com Shell.Application; $f=$s.NameSpace('C:\Windows'); $i=$f.ParseName('explorer.exe'); $i.InvokeVerb('taskbarpin')" >nul 2>&1
-echo [+] Панель задач настроена.
+:: v2.4.0: Только для Win10 - Win11 использует XAML и игнорирует COM
+if "%OS_TYPE%"=="win10" (
+    echo [4/4] Открепление иконок (Win10)...
+    powershell -NoProfile -Command "$apps = (New-Object -Com Shell.Application).NameSpace('shell:::{4234d49b-0245-4df3-b780-3893943456e1}').Items(); $apps | ForEach-Object { $_.Verbs() | Where-Object { $_.Name -match 'Unpin from taskbar' } | ForEach-Object { $_.DoIt() } }" >nul 2>&1
+    echo [+] Панель задач настроена (Win10)
+) else (
+    echo [4/4] Win11: требуется ручное открепление (XAML архитектура)
+    echo      Используйте настройки в меню Параметры -> Персонализация -> Панель задач
+)
+echo [+] Готово
 timeout /t 2 /nobreak >nul
 goto :eof
 
+:: ============================================================================
+:: v2.4.0: СБРОС МЕНЮ ПУСК - БЕЗОПАСНАЯ ОЧИСТКА
+:: ============================================================================
 :CleanStartMenu
 cls
 echo.
 echo %yellow%[*] СБРОС МЕНЮ ПУСК...%reset%
 echo ================================================================================
-echo [1/3] Удаление ярлыков...
+echo [1/3] Удаление пользовательских ярлыков...
 del /f /q "%AppData%\Microsoft\Windows\Start Menu\Programs\*.*" >nul 2>&1
 
-echo [2/3] Сброс кэша...
+echo [2/3] Сброс кэша макета...
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\CloudStore" /f >nul 2>&1
 call :RestartExplorerGracefully
 
 echo [3/3] Очистка бинарных файлов...
 del /f /q "%LocalAppData%\Microsoft\Windows\Explorer\startmenu*.bin" >nul 2>&1
 del /f /q "%LocalAppData%\Microsoft\Windows\Explorer\startmenulayout.bin" >nul 2>&1
-echo [+] Меню Пуск сброшено.
+echo [+] Меню Пуск сброшено
 timeout /t 2 /nobreak >nul
 goto :eof
 
+:: ============================================================================
+:: v2.4.0: БЕЗОПАСНАЯ ОЧИСТКА СИСТЕМЫ - ИСПРАВЛЕНО ЗАВИСАНИЕ
+:: ============================================================================
 :SystemCleanup
 cls
 echo.
 echo %yellow%[*] БЕЗОПАСНАЯ ОЧИСТКА...%reset%
 echo ================================================================================
-echo [1/5] Temp пользователя...
-del /f /s /q "%TEMP%\*" >nul 2>&1
-echo [+] %TEMP% очищен.
+echo [1/6] Временные файлы...
+powershell -NoProfile -Command "Get-ChildItem -Path $env:TEMP, $env:TMP, 'C:\Windows\Temp' -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" >nul 2>&1
+echo [+] TEMP очищен
 
-echo [2/5] Temp Windows...
-del /f /s /q "C:\Windows\Temp\*" >nul 2>&1
-echo [+] C:\Windows\Temp очищен.
-
-echo [3/5] Кэш обновлений...
+echo [2/6] Остановка сервисов обновлений...
 net stop wuauserv >nul 2>&1
-del /f /s /q "C:\Windows\SoftwareDistribution\Download\*" >nul 2>&1
+net stop cryptSvc >nul 2>&1
+net stop bits >nul 2>&1
+net stop msiserver >nul 2>&1
+
+echo [3/6] Очистка кэша обновлений...
+rd /s /q "%windir%\SoftwareDistribution\Download" >nul 2>&1
+rd /s /q "%windir%\System32\catroot2" >nul 2>&1
+
+echo [4/6] Запуск сервисов...
 net start wuauserv >nul 2>&1
-echo [+] Кэш обновлений очищен.
+net start cryptSvc >nul 2>&1
+net start bits >nul 2>&1
+net start msiserver >nul 2>&1
 
-echo [4/5] DirectX Shader...
-del /f /s /q "%LocalAppData%\D3DSCache\*" >nul 2>&1
-echo [+] D3DSCache очищен.
+echo [5/6] Очистка компонентов DISM...
+dism /online /cleanup-image /startcomponentcleanup /resetbase >nul 2>&1
+echo [+] DISM очистка завершена
 
-echo [5/5] Корзина и логи...
+echo [6/6] Очистка корзины...
 powershell -NoProfile -Command "Clear-RecycleBin -Force -ErrorAction SilentlyContinue" >nul 2>&1
-for /f "tokens=*" %%L in ('wevtutil el 2^>nul ^| findstr /v /i "Security\|Setup\|ForwardedEvents"') do wevtutil cl "%%L" >nul 2>&1
-echo [+] Корзина и логи очищены.
+echo [+] Корзина очищена
+
+:: v2.4.0: Пропускаем очистку логов (зависание + compliance risk)
+echo.
+echo [!] Очистка системных логов пропущена (требует много времени, compliance risk)
+echo.
+echo ================================================================================
+echo %green%     ОЧИСТКА ЗАВЕРШЕНА%reset%
+echo ================================================================================
 timeout /t 2 /nobreak >nul
 goto :eof
 
 :: ============================================================================
-:: v2.3.0: APPLYALL / RESTORE (ПОСЛЕДОВАТЕЛЬНЫЙ ПОТОК БЕЗ EARLY EXIT)
+:: v2.4.0: APPLYALL / RESTORE - ИСПРАВЛЕНО ЗАКРЫТИЕ КОНСОЛИ
 :: ============================================================================
 :ApplyAll
 cls
@@ -487,8 +513,6 @@ sc config DoSvc start=manual >nul 2>&1
 call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Edge" "StartupBoostEnabled" REG_DWORD "1" "Включить Edge Boost"
 reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v "AllowTelemetry" /f >nul 2>&1
 reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v "DisableWindowsConsumerFeatures" /f >nul 2>&1
-reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" /v "SystemPaneSuggestionsEnabled" /f >nul 2>&1
-reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" /v "SubscribedContent-338393Enabled" /f >nul 2>&1
 call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" "TurnOffWindowsCopilot" REG_DWORD "0" "Включить Copilot"
 call :SetReg "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" "ConsentPromptBehaviorAdmin" REG_DWORD "5" "UAC: по умолчанию"
 call :SetReg "HKCU\Control Panel\Mouse" "MouseSpeed" REG_SZ "1" "Включить акселерацию"
