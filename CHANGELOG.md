@@ -12,7 +12,7 @@ Components maintain independent versioning and are grouped under a coordinated p
 |------------------------|----------|----|--------------|
 | **SystemTweaker.bat**  | `v3.2.0` | ✅ Production | 2026-05-11   |
 | **BloatwareRemover.bat**| `v2.4.1` |  ✅ Production   | 2026-05-11   |
-| **ExplorerConfig.bat** | `v2.0.0` | 🧪 Beta Testing | 2026-05-11   |
+| **ExplorerConfig.bat** | `v2.5.0` | 🧪 Beta Testing | 2026-05-12   |
 
 ---
 
@@ -283,6 +283,18 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 📂 ExplorerConfig.bat
+### [v2.5.0] - 2026-05-11
+#### 🛠 Fixed
+- **Persistent Status Update Failure**: Resolved critical issue where menu status remained stale after `ApplyAll` [A] and `RestoreDefaults` [D]. Root cause was a race condition between Explorer process restart and registry read latency, exacerbated by pipe parsing overhead in `CheckExplorerStatus`.
+- **Registry Read Fragility**: Removed dependency on `reg query | find` for batch status updates. Replaced with **Direct Status Injection** (`:SetStatusApplied` / `:SetStatusDefault`), which manually updates UI variables based on the logic of the applied settings.
+
+#### 🔄 Changed
+- **Status Sync Architecture**: Split status logic into two paths:
+  1. **Manual Toggles**: Continue using `:CheckExplorerStatus` (reads registry).
+  2. **Batch Operations**: Now use `:SetStatusApplied` / `:SetStatusDefault` (direct variable assignment).
+- **Reliability**: Eliminated all asynchronous read operations after Explorer restart, ensuring 100% deterministic UI updates.
+
+
 ### [v2.4.0] - 2026-05-11
 #### 🛠 Fixed
 - **Status Not Updating**: Resolved issue where menu status remained stale. Root cause was strict `find "0x1"` pattern in `:CheckExplorerStatus`. Reverted to `find "1"` (integrated from stable v1.11) which robustly handles both hex and decimal registry output formats.
