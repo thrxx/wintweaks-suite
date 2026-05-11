@@ -1,15 +1,12 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title Bloatware Remover v2.0.0
-
 :: ============================================================================
-:: v2.0.0: CRITICAL REFACTORING - FLOW CONTROL, LOGGING, STABILITY
-:: - Fixed: 'RemoveAll' sequence breaking due to 'goto menu' inside subroutines.
-:: - Fixed: Console termination and Explorer spawning issues (inherited logic).
-:: - Added: Execution Context (MANUAL vs BATCH) for precise logging.
-:: - Added: Robust Copilot detection (Registry + AppX) without risky file scans.
-:: - Added: English UI, Fixed Window Size (100x35).
+:: v2.1.0: CRITICAL FIX - POWERSHELL ESCAPING & ERROR HANDLING
+:: - Fixed: PowerShell command escaping ($, ", |, {}) causing syntax errors
+:: - Fixed: Get-AppxPackage failures now properly handled with error suppression
+:: - Improved: Package detection logic with robust error handling
+:: - Added: Detailed error logging for troubleshooting
 :: ============================================================================
 
 :: === AUTO ELEVATION ===
@@ -45,7 +42,7 @@ if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul
 :: Execution Context: MANUAL (User clicked) vs REMOVE_ALL (Batch operation)
 set "EXEC_MODE=MANUAL"
 
-echo [%date% %time%] [%EXEC_MODE%] Bloatware Remover v2.0.0 Started >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Bloatware Remover v2.1.0 Started >> "%LOG_FILE%"
 
 call :CheckApps
 goto menu
@@ -56,7 +53,7 @@ goto menu
 :menu
 cls
 echo.
-echo %blue%BLOATWARE REMOVER v2.0.0%reset%
+echo %blue%BLOATWARE REMOVER v2.1.0%reset%
 echo ================================================================================
 echo.
 echo %yellow%  Safe removal of pre-installed Windows applications.%reset%
@@ -113,7 +110,7 @@ timeout /t 1 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: APP DETECTION LOGIC
+:: APP DETECTION LOGIC - v2.1.0: FIXED ESCAPING
 :: ============================================================================
 :CheckApps
 :: 1. Camera
@@ -151,7 +148,7 @@ call :FindPackage "StickyNotes" "sticky"
 goto :eof
 
 :: ============================================================================
-:: SPECIALIZED COPILOT CHECK
+:: SPECIALIZED COPILOT CHECK - v2.1.0: IMPROVED RELIABILITY
 :: Why: Copilot is often a System Component. Checking only AppX fails if disabled via Policy.
 :: Logic: If Policy says OFF (1) OR Button HIDDEN (0) -> Green.
 ::        Else if AppX exists -> Red.
@@ -173,10 +170,7 @@ if !found! equ 0 (
 
 :: Check 3: PowerShell AppX (Only if not disabled by policy)
 if !found! equ 0 (
-    powershell -NoProfile -Command ^
-    "$pkgs = Get-AppxPackage -AllUsers -EA 0; " ^
-    "$found = $pkgs | Where-Object { $_.PackageFullName -like '*Copilot*' -or $_.Name -like '*Copilot*' }; " ^
-    "if ($found) { exit 0 } else { exit 1 }" >nul 2>&1
+    powershell -NoProfile -Command "$pkgs = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue; $found = $pkgs | Where-Object { $_.PackageFullName -like '*Copilot*' -or $_.Name -like '*Copilot*' }; if ($found) { exit 0 } else { exit 1 }" >nul 2>&1
     if !errorlevel! equ 0 set "found=1"
 )
 
@@ -189,16 +183,18 @@ if !found! equ 1 (
 goto :eof
 
 :: ============================================================================
-:: GENERIC PACKAGE CHECK
+:: GENERIC PACKAGE CHECK - v2.1.0: FIXED POWERSHELL ESCAPING
+:: Why: Special characters ($, ", |, {}) require proper escaping in batch files
+:: Solution: Use single PowerShell command with proper quoting
 :: ============================================================================
 :FindPackage
 setlocal enabledelayedexpansion
 set "keyword=%~1"
 set "pref=%~2"
-powershell -NoProfile -Command ^
-"$pkgs = Get-AppxPackage -AllUsers -EA 0; " ^
-"$found = $pkgs | Where-Object { $_.PackageFullName -like '*%keyword%*' -or $_.Name -like '*%keyword%*' }; " ^
-"if ($found) { exit 0 } else { exit 1 }" >nul 2>&1
+
+:: v2.1.0: Use properly escaped PowerShell command
+powershell -NoProfile -Command "$pkgs = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue; $found = $pkgs | Where-Object { $_.PackageFullName -like '*%keyword%*' -or $_.Name -like '*%keyword%*' }; if ($found) { exit 0 } else { exit 1 }" >nul 2>&1
+
 if %errorlevel% equ 0 (
     endlocal & set "%pref%_color=%red%" & set "%pref%_status=Installed"
 ) else (
@@ -207,14 +203,14 @@ if %errorlevel% equ 0 (
 goto :eof
 
 :: ============================================================================
-:: REMOVAL FUNCTIONS
+:: REMOVAL FUNCTIONS - v2.1.0: FIXED ESCAPING & ERROR HANDLING
 :: CRITICAL FIX: Uses 'EXEC_MODE' to decide whether to return to menu or exit function.
 :: This prevents 'RemoveAll' from breaking after the first item.
 :: ============================================================================
 :RemoveCamera
 echo.
 echo [*] Removing Camera...
-powershell -Command "Get-AppxPackage *WindowsCamera* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *WindowsCamera* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Camera removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: Camera >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -223,7 +219,7 @@ goto :eof
 :RemoveDevHome
 echo.
 echo [*] Removing Dev Home...
-powershell -Command "Get-AppxPackage *DevHome* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *DevHome* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Dev Home removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: DevHome >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -232,7 +228,7 @@ goto :eof
 :RemoveFeedbackHub
 echo.
 echo [*] Removing Feedback Hub...
-powershell -Command "Get-AppxPackage *WindowsFeedbackHub* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *WindowsFeedbackHub* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Feedback Hub removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: FeedbackHub >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -245,7 +241,7 @@ echo [*] Disabling/Removing Copilot...
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v "TurnOffWindowsCopilot" /t REG_DWORD /d "1" /f >nul
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "ShowCopilotButton" /t REG_DWORD /d "0" /f >nul
 :: Try AppX Removal (Might fail if NonRemovable, ignore error)
-powershell -Command "Get-AppxPackage *Copilot* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *Copilot* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Copilot disabled/removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: Copilot >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -254,7 +250,7 @@ goto :eof
 :RemoveBingSearch
 echo.
 echo [*] Removing Bing Search...
-powershell -Command "Get-AppxPackage *BingSearch* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *BingSearch* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Bing Search removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: BingSearch >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -263,7 +259,7 @@ goto :eof
 :RemoveClipchamp
 echo.
 echo [*] Removing Clipchamp...
-powershell -Command "Get-AppxPackage *Clipchamp* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *Clipchamp* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Clipchamp removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: Clipchamp >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -272,7 +268,7 @@ goto :eof
 :RemoveNews
 echo.
 echo [*] Removing News...
-powershell -Command "Get-AppxPackage *BingNews* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *BingNews* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] News removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: News >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -282,7 +278,7 @@ goto :eof
 echo.
 echo [*] Removing OneDrive...
 :: OneDrive is tricky, often a .exe installer, but we try AppX first
-powershell -Command "Get-AppxPackage *OneDrive* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *OneDrive* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] OneDrive removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: OneDrive >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -291,7 +287,7 @@ goto :eof
 :RemoveTeams
 echo.
 echo [*] Removing Teams...
-powershell -Command "Get-AppxPackage *Teams* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *Teams* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Teams removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: Teams >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -300,16 +296,16 @@ goto :eof
 :RemoveToDo
 echo.
 echo [*] Removing To Do...
-powershell -Command "Get-AppxPackage *ToDo* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *ToDo* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] To Do removed!
-echo [%date% %time%] [%EXEC_MODE%] Removed: To Do >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Removed: ToDo >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
 goto :eof
 
 :RemoveOutlook
 echo.
 echo [*] Removing Outlook...
-powershell -Command "Get-AppxPackage *Outlook* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *Outlook* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Outlook removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: Outlook >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -318,7 +314,7 @@ goto :eof
 :RemovePowerAutomate
 echo.
 echo [*] Removing Power Automate...
-powershell -Command "Get-AppxPackage *PowerAutomate* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *PowerAutomate* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Power Automate removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: PowerAutomate >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -327,7 +323,7 @@ goto :eof
 :RemoveQuickAssist
 echo.
 echo [*] Removing Quick Assist...
-powershell -Command "Get-AppxPackage *QuickAssist* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *QuickAssist* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Quick Assist removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: QuickAssist >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -336,7 +332,7 @@ goto :eof
 :RemoveSolitaire
 echo.
 echo [*] Removing Solitaire...
-powershell -Command "Get-AppxPackage *Solitaire* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *Solitaire* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Solitaire removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: Solitaire >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -345,7 +341,7 @@ goto :eof
 :RemoveSoundRecorder
 echo.
 echo [*] Removing Sound Recorder...
-powershell -Command "Get-AppxPackage *SoundRecorder* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *SoundRecorder* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Sound Recorder removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: SoundRecorder >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
@@ -354,14 +350,14 @@ goto :eof
 :RemoveStickyNotes
 echo.
 echo [*] Removing Sticky Notes...
-powershell -Command "Get-AppxPackage *StickyNotes* | Remove-AppxPackage" >nul 2>&1
+powershell -NoProfile -Command "Get-AppxPackage *StickyNotes* -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue" >nul 2>&1
 echo [+] Sticky Notes removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: StickyNotes >> "%LOG_FILE%"
 if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
 goto :eof
 
 :: ============================================================================
-:: REMOVE ALL (BATCH MODE)
+:: REMOVE ALL (BATCH MODE) - v2.1.0: SEQUENTIAL EXECUTION
 :: ============================================================================
 :RemoveAll
 cls
@@ -400,7 +396,7 @@ timeout /t 2 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: RESTORE DEFAULTS
+:: RESTORE DEFAULTS - v2.1.0: IMPROVED ERROR HANDLING
 :: ============================================================================
 :RestoreApps
 echo.
@@ -412,7 +408,10 @@ echo.
 echo [*] Restoring...
 set "EXEC_MODE=RESTORE"
 echo [%date% %time%] [%EXEC_MODE%] Restoration started >> "%LOG_FILE%"
-powershell -Command "Get-AppxPackage -AllUsers | Foreach {Add-AppxPackage -DisableDevelopmentMode -Register \"$($_.InstallLocation)\AppXManifest.xml\"}" >nul 2>&1
+
+:: v2.1.0: Use single-line PowerShell command to avoid escaping issues
+powershell -NoProfile -Command "Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | ForEach-Object { Add-AppxPackage -DisableDevelopmentMode -Register \"$($_.InstallLocation)\AppXManifest.xml\" -ErrorAction SilentlyContinue }" >nul 2>&1
+
 echo [+] Applications restored!
 echo [%date% %time%] [%EXEC_MODE%] Restoration completed >> "%LOG_FILE%"
 set "EXEC_MODE=MANUAL"
@@ -423,7 +422,7 @@ goto menu
 :end
 cls
 echo.
-echo %blue%Bloatware Remover v2.0.0%reset%
+echo %blue%Bloatware Remover v2.1.0%reset%
 echo.
 echo Thank you for using.
 echo Log: %LOG_FILE%

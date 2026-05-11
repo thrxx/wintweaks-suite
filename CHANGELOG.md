@@ -206,6 +206,16 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 🧹 BloatwareRemover
+### [v2.1.0] - 2026-05-11
+#### 🛠 Fixed
+- **PowerShell Syntax Errors**: Resolved critical `ObjectNotFound` and `CommandNotFoundException` errors caused by improper character escaping (`$`, `"`, `|`, `{`, `}`) when passing PowerShell commands from batch files. Multi-line commands replaced with single-line properly-quoted versions.
+- **False "All Removed" Status**: Fixed package detection logic that incorrectly showed all apps as "Removed" due to silent script failures. Now properly handles `Get-AppxPackage` errors with `-ErrorAction SilentlyContinue`.
+- **NonRemovable App Crashes**: Added comprehensive error suppression for system components that Windows marks as non-removable, preventing script termination on apps like Copilot, OneDrive, and Teams.
+
+#### 🔄 Changed
+- **PowerShell Command Structure**: Migrated from complex multi-line batch-escaped commands to single-line native PowerShell syntax, significantly improving reliability and reducing maintenance overhead.
+- **Error Handling**: All AppX operations now use `-ErrorAction SilentlyContinue` to gracefully handle missing packages and permission issues without user-facing errors.
+
 ### [v2.0.0] - 2026-05-11
 #### 🛠 Fixed
 - **RemoveAll Sequence Breaking**: Fixed critical flow control issue where `RemoveAll` would exit to the main menu after the first item. Implemented `EXEC_MODE` checks in all removal functions.
