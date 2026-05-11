@@ -3,6 +3,20 @@ All notable changes to the **System Tweaker** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.6.0] - 2026-05-11
+### 🛠 Fixed
+- **Console Termination**: Resolved premature closure during `ApplyAll`, `[T]`, `[S]`, and `[12]`. Fixed `BATCH_MODE` flow control to prevent `goto menu` jumps mid-execution. All subroutines now properly return via `goto :eof`.
+- **Unwanted Explorer Spawns**: Eliminated duplicate `explorer.exe` launches in `[6]`, `[T]`, `[S]`, `[D]`. Centralized restart into single deferred call at end of mass operations (`ApplyAll`/`RestoreDefaults`).
+- **Status Desync [2]-[5], [8]-[11]**: Maintained direct registry parsing from v2.5.0 with proper HEX/DEC normalization, preventing variable scope loss from `setlocal/endlocal` boundaries.
+
+### ✨ Added
+- **Fixed Window Size**: Set console to `100x35` characters to prevent scrolling and ensure full menu visibility without manual resizing.
+- **English UI**: Complete translation of all interface elements, prompts, messages, and status indicators from Russian to English.
+
+### 🔄 Changed
+- **Deferred Explorer Restart**: Individual functions no longer trigger explorer restart. Single restart executed at end of `ApplyAll`/`RestoreDefaults` to minimize UI flicker and process instability.
+- **Version Tracking**: Added inline `:: v2.0.0 → v2.6.0:` comment blocks mapping architectural decisions to specific bug fixes.
+
 ---
 
 ## [v2.5.0] - 2026-05-11
@@ -45,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [v2.2.0] - 2026-05-11
+## [v2.2.0] - 2026-05-08
 ### 🛠 Fixed
 - **Taskbar Search/TaskView Persistence**: Fixed registry keys not applying after reboot by enforcing `gpupdate /force` and proper UI restart sequence.
 - **Duplicate Explorer Spawns**: Removed redundant `explorer.exe` launches in `[12]`, `[T]`, `[S]`. UI now restarts exactly once when required.
@@ -58,7 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [v2.1.0] - 2026-05-11
+## [v2.1.0] - 2026-05-08
 ### 🛠 Fixed
 - **Status Sync via Fragile `findstr`**: Replaced substring matching with exact token extraction (`for /f "tokens=3"`). Eliminated false positives on partial HEX matches.
 - **Console Termination on Explorer Restart**: Switched from force-kill to graceful termination. Added background process launch to preserve `conhost.exe`.
@@ -70,7 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [v2.0.0] - 2026-05-11
+## [v2.0.0] - 2026-05-08
 ### ✨ Added
 - **Safe Registry Core (`:SetReg`)**: Idempotent write function with validation, error handling, and context-aware logging.
 - **Automatic Registry Backup**: One-time export of critical `HKLM`/`HKCU` policy keys to `%USERPROFILE%\Desktop\Tweaker_Backups\` before first modification.
