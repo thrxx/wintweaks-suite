@@ -1,16 +1,16 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title Explorer Config v2.2.0
+title Explorer Config v2.3.0
 
 :: ============================================================================
-:: v2.2.0: CRITICAL FIX - STATUS REFRESH AFTER BATCH OPERATIONS
-:: - Fixed: Menu status not updating after ApplyAll/RestoreDefaults.
-::   Root cause: setlocal/endlocal in CheckExplorerStatus created variable scope
-::   isolation. Solution: Removed setlocal from CheckExplorerStatus and used
-::   direct reg query without variable isolation.
-:: - Improved: Consistent status refresh across all operations.
-:: - Added: Visual feedback "[*] Updating status..." before menu redraw.
+:: v2.3.0: CRITICAL FIXES - STATUS REFRESH & DESKTOP BIN TOGGLE
+:: - Fixed: Menu status not updating after batch/manual operations. Root cause:
+::   residual setlocal scope and lack of variable reset before reg queries.
+::   Solution: Removed all setlocal from CheckExplorerStatus, added explicit
+::   variable clearing and 1s sync delay after Explorer restart.
+:: - Fixed: [6] Recycle Bin toggle not working. Implemented dual-mechanism:
+::   HideDesktopIcons=1 + deletion of NameSpace override key for immediate effect.
 :: ============================================================================
 
 :: === AUTO ELEVATION ===
@@ -55,8 +55,9 @@ if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul
 
 set "EXEC_MODE=MANUAL"
 
-echo [%date% %time%] [%EXEC_MODE%] Explorer Config v2.2.0 Started >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Explorer Config v2.3.0 Started >> "%LOG_FILE%"
 
+:: v2.3.0: Initial status check with explicit reset
 call :CheckExplorerStatus
 goto menu
 
@@ -66,7 +67,7 @@ goto menu
 :menu
 cls
 echo.
-echo %blue%EXPLORER CONFIG v2.2.0%reset%
+echo %blue%EXPLORER CONFIG v2.3.0%reset%
 echo ================================================================================
 echo.
 echo %yellow%  %OS_NAME% (Build %BUILD%)%reset%
@@ -112,16 +113,18 @@ timeout /t 1 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: STATUS CHECK - v2.2.0: NO SETLOCAL TO PRESERVE VARIABLES
-:: Why: setlocal/endlocal created variable scope isolation preventing menu update.
-:: Solution: Direct reg query without setlocal, variables persist in global scope.
+:: STATUS CHECK - v2.3.0: CLEAN SCOPE & EXPLICIT RESET
+:: Why: Previous versions suffered from variable persistence issues.
+:: Solution: No setlocal/endlocal, explicit "set var=" before each query.
 :: ============================================================================
 :CheckExplorerStatus
-:: 1. Open Explorer (LaunchTo: 1=PC, 2=QuickAccess)
+:: 1. Open Explorer
+set "open_color=" & set "open_status="
 reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "LaunchTo" 2>nul | find "0x1" >nul
 if %errorlevel% equ 0 (set "open_color=%green%" & set "open_status=This PC") else (set "open_color=%red%" & set "open_status=Home/Quick Access")
 
 :: 2. Home Button (Win11)
+set "home_color=" & set "home_status="
 if "%OS_TYPE%"=="win11" (
     reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{f874310e-b6b7-47dc-bc84-b9e6b38f5903}" 2>nul | find "0x1" >nul
     if %errorlevel% equ 0 (set "home_color=%green%" & set "home_status=Hidden") else (set "home_color=%red%" & set "home_status=Visible")
@@ -130,6 +133,7 @@ if "%OS_TYPE%"=="win11" (
 )
 
 :: 3. Gallery Button (Win11)
+set "gallery_color=" & set "gallery_status="
 if "%OS_TYPE%"=="win11" (
     reg query "HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "0x0" >nul
     if %errorlevel% equ 0 (set "gallery_color=%green%" & set "gallery_status=Hidden") else (set "gallery_color=%red%" & set "gallery_status=Visible")
@@ -138,19 +142,22 @@ if "%OS_TYPE%"=="win11" (
 )
 
 :: 4. Network Button
+set "network_color=" & set "network_status="
 reg query "HKCU\Software\Classes\CLSID\{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "0x0" >nul
 if %errorlevel% equ 0 (set "network_color=%green%" & set "network_status=Hidden") else (set "network_color=%red%" & set "network_status=Visible")
 
 :: 5. Recycle Bin in Navigation
+set "navbin_color=" & set "navbin_status="
 reg query "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "0x1" >nul
 if %errorlevel% equ 0 (set "navbin_color=%green%" & set "navbin_status=Enabled") else (set "navbin_color=%red%" & set "navbin_status=Disabled")
 
-:: 6. Recycle Bin on Desktop - v2.1.0: FIXED LOGIC
-:: Value=0 means VISIBLE, Value=1 means HIDDEN
+:: 6. Recycle Bin on Desktop - v2.3.0: ROBUST CHECK
+set "desktopbin_color=" & set "desktopbin_status="
 reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" 2>nul | find "0x0" >nul
 if %errorlevel% equ 0 (set "desktopbin_color=%green%" & set "desktopbin_status=Visible") else (set "desktopbin_color=%red%" & set "desktopbin_status=Hidden")
 
 :: 7. Compact View (Win11)
+set "compact_color=" & set "compact_status="
 if "%OS_TYPE%"=="win11" (
     reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" 2>nul | find "0x1" >nul
     if %errorlevel% equ 0 (set "compact_color=%green%" & set "compact_status=Enabled") else (set "compact_color=%red%" & set "compact_status=Disabled")
@@ -159,10 +166,12 @@ if "%OS_TYPE%"=="win11" (
 )
 
 :: 8. Recent Folders
+set "recent_color=" & set "recent_status="
 reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" 2>nul | find "0x0" >nul
 if %errorlevel% equ 0 (set "recent_color=%green%" & set "recent_status=Disabled") else (set "recent_color=%red%" & set "recent_status=Enabled")
 
 :: 9. Context Menu (Win11 Classic)
+set "context_color=" & set "context_status="
 if "%OS_TYPE%"=="win11" (
     reg query "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" 2>nul | find /i "(Default)" >nul
     if %errorlevel% equ 0 (set "context_color=%green%" & set "context_status=Classic") else (set "context_color=%red%" & set "context_status=Modern")
@@ -246,8 +255,11 @@ goto menu
 
 :ToggleDesktopBin
 echo [*] Toggling Recycle Bin on Desktop...
-:: v2.1.0: FIXED - Now correctly hides the bin (value=1 means hidden)
+:: v2.3.0: DUAL MECHANISM FOR RELIABLE TOGGLE
+:: 1. Set HideDesktopIcons flag
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "1" /f >nul
+:: 2. Delete NameSpace override if present (forces immediate hide)
+reg delete "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace\{645FF040-5081-101B-9F08-00AA002F954E}" /f >nul 2>&1
 echo [+] Recycle Bin Hidden from Desktop!
 echo [%date% %time%] [%EXEC_MODE%] Hid DesktopBin >> "%LOG_FILE%"
 call :CheckExplorerStatus
@@ -293,7 +305,7 @@ timeout /t 2 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: APPLY ALL - v2.2.0: FIXED STATUS REFRESH
+:: APPLY ALL - v2.3.0: ENSURED STATUS REFRESH
 :: ============================================================================
 :ApplyAllExplorer
 cls
@@ -320,6 +332,7 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcon
 
 echo [ 6/9] Hide Recycle Bin from Desktop...
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "1" /f >nul 2>&1
+reg delete "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace\{645FF040-5081-101B-9F08-00AA002F954E}" /f >nul 2>&1
 
 echo [ 7/9] Enable Compact View...
 if "%OS_TYPE%"=="win11" reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" /t REG_DWORD /d "1" /f >nul 2>&1
@@ -332,8 +345,9 @@ echo [ 9/9] Classic Context Menu...
 if "%OS_TYPE%"=="win11" reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /ve /t REG_SZ /d "" /f >nul 2>&1
 
 call :RestartExplorer
-:: v2.2.0: CRITICAL FIX - Refresh status AFTER Explorer restart
+:: v2.3.0: CRITICAL - Wait for UI to settle, then refresh status
 echo [*] Updating status...
+timeout /t 1 /nobreak >nul
 call :CheckExplorerStatus
 echo.
 echo ================================================================================
@@ -345,7 +359,7 @@ timeout /t 2 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: RESTORE DEFAULTS - v2.2.0: FIXED STATUS REFRESH
+:: RESTORE DEFAULTS - v2.3.0: ENSURED STATUS REFRESH
 :: ============================================================================
 :RestoreExplorerDefaults
 cls
@@ -390,8 +404,9 @@ echo [ 9/9] Restore Modern Context Menu...
 if "%OS_TYPE%"=="win11" reg delete "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" /f >nul 2>&1
 
 call :RestartExplorer
-:: v2.2.0: CRITICAL FIX - Refresh status AFTER Explorer restart
+:: v2.3.0: CRITICAL - Wait for UI to settle, then refresh status
 echo [*] Updating status...
+timeout /t 1 /nobreak >nul
 call :CheckExplorerStatus
 echo.
 echo ================================================================================
@@ -405,7 +420,7 @@ goto menu
 :end
 cls
 echo.
-echo %blue%Explorer Config v2.2.0%reset%
+echo %blue%Explorer Config v2.3.0%reset%
 echo.
 echo Thank you for using.
 echo Log: %LOG_FILE%

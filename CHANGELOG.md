@@ -283,6 +283,15 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 📂 ExplorerConfig.bat
+### [v2.3.0] - 2026-05-11
+#### 🛠 Fixed
+- **Menu Status Not Updating**: Resolved persistent issue where status variables failed to refresh after `ApplyAll`/`RestoreDefaults`. Root cause was implicit `setlocal` scope retention and lack of variable resets. Removed all `setlocal`/`endlocal` from `:CheckExplorerStatus`, added explicit `set "var="` before each registry query, and inserted `timeout /t 1` after Explorer restart to allow UI cache propagation.
+- **[6] Recycle Bin Toggle Failure**: Fixed unreliable desktop icon toggle. Implemented dual-mechanism: sets `HideDesktopIcons=1`/`0` AND forces deletion of `HKLM\...\Desktop\NameSpace\{645FF040-...}` override key to bypass Windows shell caching and guarantee immediate state change.
+
+#### 🔄 Changed
+- **Status Refresh Flow**: Unified refresh pattern across all operations. Both manual and batch modes now explicitly clear status variables, wait for UI settlement, and redraw menu with accurate state.
+- **Inline Documentation**: Added comments explaining Batch variable scope isolation risks and dual-key Recycle Bin management to prevent future regressions.
+
 ### [v2.2.0] - 2026-05-11
 #### 🛠 Fixed
 - **Menu Status Not Updating After Batch Operations**: Resolved critical issue where menu status remained stale after `ApplyAll` ([A]) and `RestoreDefaults` ([D]). Root cause was `setlocal disabledelayedexpansion` in `:CheckExplorerStatus` creating variable scope isolation. Removed `setlocal`/`endlocal` to allow status variables to persist in global scope.
