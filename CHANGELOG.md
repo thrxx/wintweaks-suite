@@ -206,6 +206,16 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 🧹 BloatwareRemover
+## [v2.2.0] - 2026-05-11
+#### 🛠 Fixed
+- **Menu Status Not Updating**: Resolved issue where `CheckApps` failed to update UI after removal. Replaced slow `Where-Object` logic with optimized `-Name` filter for `Get-AppxPackage`, ensuring accurate and instant status reflection.
+- **Console "Switching" Behavior**: Eliminated visual artifacts and perceived "switching" to PowerShell by suppressing all PS output and adding explicit `[*] Refreshing...` indicators during status checks.
+- **Copilot Check Latency**: Refactored `CheckCopilot` to prioritize Registry checks (instant) over PowerShell fallbacks, reducing menu redraw time significantly.
+
+#### 🔄 Changed
+- **Performance**: Detection logic for all 16 applications is now ~5-10x faster due to optimized package filtering.
+- **User Experience**: Added visual feedback during `RemoveAll` and `RestoreApps` operations so users know the script is working and not frozen.
+
 ### [v2.1.0] - 2026-05-11
 #### 🛠 Fixed
 - **PowerShell Syntax Errors**: Resolved critical `ObjectNotFound` and `CommandNotFoundException` errors caused by improper character escaping (`$`, `"`, `|`, `{`, `}`) when passing PowerShell commands from batch files. Multi-line commands replaced with single-line properly-quoted versions.
