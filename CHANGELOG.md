@@ -8,11 +8,11 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 📊 Current Release Matrix
-| Component              | Version | Status | Last Updated |
-|------------------------|---------|----|--------------|
-| **SystemTweaker.bat**  | `v3.2.0`| ✅ Production | 2026-05-11   |
-| **BloatwareRemover.bat**| `v2.0.0`|  🧪 Beta Testing   | 2026-05-11   |
-| **ExplorerConfig.bat** | `v1.5.0`| 🔄 Pending Refactor | 2026-05-10   |
+| Component              | Version  | Status | Last Updated |
+|------------------------|----------|----|--------------|
+| **SystemTweaker.bat**  | `v3.2.0` | ✅ Production | 2026-05-11   |
+| **BloatwareRemover.bat**| `v2.3.0` |  🧪 Beta Testing   | 2026-05-11   |
+| **ExplorerConfig.bat** | `v1.5.0` | 🔄 Pending Refactor | 2026-05-10   |
 
 ---
 
@@ -206,7 +206,17 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 🧹 BloatwareRemover
-## [v2.2.0] - 2026-05-11
+### [v2.3.0] - 2026-05-11
+#### 🛠 Fixed
+- **Console Window Size Not Applying**: Resolved issue where `mode con` was ignored by modern Windows Terminal/Console hosts. Implemented hybrid fallback using PowerShell `[Console]::Window...` API to force 100x35 dimensions reliably across all environments.
+- **Menu Status Not Updating After Removal**: Fixed race condition where `Get-AppxPackage` returned cached data immediately after deletion. Added `timeout /t 1` before status checks and visual `[*] Refreshing...` feedback to ensure UI accuracy.
+- **False "Installed" Reports**: Refined `FindPackage` logic with `-PackageTypeFilter Main` to exclude staged/provisioned packages that appear installed but are merely cached installers, preventing incorrect status display.
+
+#### 🔄 Changed
+- **Status Refresh Flow**: Manual removal functions now explicitly wait for AppX cache propagation before refreshing the menu, ensuring users see accurate state immediately.
+- **Batch Removal Finalization**: `RemoveAll` and `RestoreApps` now include a dedicated status refresh phase with delay to guarantee UI consistency after mass operations.
+
+### [v2.2.0] - 2026-05-11
 #### 🛠 Fixed
 - **Menu Status Not Updating**: Resolved issue where `CheckApps` failed to update UI after removal. Replaced slow `Where-Object` logic with optimized `-Name` filter for `Get-AppxPackage`, ensuring accurate and instant status reflection.
 - **Console "Switching" Behavior**: Eliminated visual artifacts and perceived "switching" to PowerShell by suppressing all PS output and adding explicit `[*] Refreshing...` indicators during status checks.
