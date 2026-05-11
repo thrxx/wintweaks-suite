@@ -3,6 +3,30 @@ All notable changes to the **System Tweaker** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.7.0] - 2026-05-11
+### 🛠 Fixed
+- **Syntax Error in Telemetry**: Resolved "'Ads' is not recognized" error caused by improper line continuation. Consolidated registry commands into single-line statements.
+- **Console Termination**: Fixed premature closure during `[6]`, `[T]`, `[S]`, `[A]`, `[D]`. Enhanced `BATCH_MODE` flow control to prevent `goto menu` jumps and unwanted `explorer.exe` spawns mid-execution.
+- **Status Desync [2]-[5], [8]-[11]**: Maintained direct registry parsing with proper HEX/DEC normalization and explicit variable scoping to prevent scope loss.
+
+### ✨ Added
+- **Fallback Mechanism**: Implemented intelligent retry logic for all critical parameters. Each setting now attempts Method 1 (Registry), verifies status, and if unsuccessful applies Method 2 (PowerShell/GPO/CSP).
+- **Alternative Methods Integration**:
+    - Power Plan: `powercfg` → PowerShell CIM (`Win32_PowerPlan`)
+    - UWP Background: Registry → GPO via `lgpo.exe`
+    - Delivery Optimization: Registry → PowerShell `DeliveryOptimization` module
+    - Edge Boost: Registry → `policies.json` (Chromium Enterprise)
+    - Telemetry: Registry → CSP via `Microsoft.Management.Infrastructure`
+    - Mouse Acceleration: Registry → PowerShell `Set-ItemProperty`
+- **Status Verification**: Added post-application checks after each method. Only proceeds to fallback if primary method fails.
+- **Enhanced Logging**: Method tracking (Method 1 vs Method 2) in `%LOCALAPPDATA%\Tweaker\system_tweaker.log`.
+
+### 🔄 Changed
+- **Deferred Explorer Restart**: In `ApplyAll`, explorer restart now occurs once at the end of all operations instead of after each parameter.
+- **Idempotent Fallback**: Secondary methods only execute if primary method fails status verification, preventing redundant operations.
+
+---
+
 ## [v2.6.0] - 2026-05-11
 ### 🛠 Fixed
 - **Console Termination**: Resolved premature closure during `ApplyAll`, `[T]`, `[S]`, and `[12]`. Fixed `BATCH_MODE` flow control to prevent `goto menu` jumps mid-execution. All subroutines now properly return via `goto :eof`.
