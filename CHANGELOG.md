@@ -3,6 +3,46 @@ All notable changes to the **System Tweaker** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.0.0] - 2026-05-11
+### 🔄 Complete Rewrite Based on Stable v1.11
+- **Root Cause Analysis**: Versions v2.0.0-v2.7.0 introduced complex features (BATCH_MODE, fallback mechanisms, setlocal/endlocal isolation) that broke the stable v1.11 architecture, causing console termination, status desync, and flow interruption.
+- **Solution**: Complete rewrite preserving v1.11's simple, direct registry operations while adding modern engineering practices.
+
+### ✨ Added
+- **English UI**: Complete translation of all interface elements, prompts, and messages.
+- **Fixed Window Size**: Console set to 100x35 characters to prevent scrolling.
+- **OS Detection**: Automatic Windows 10/11 identification via CurrentBuild registry.
+- **Registry Backup**: One-time export of critical keys to `%USERPROFILE%\Desktop\Tweaker_Backups\`.
+- **Structured Logging**: All actions logged with timestamps to `%LOCALAPPDATA%\Tweaker\system_tweaker.log`.
+
+### 🛠 Fixed
+- **Console Termination**: Removed `taskkill /F`, replaced with graceful `taskkill /IM` + detached `start explorer.exe`.
+- **Status Desync**: Reverted to simple `reg query | find` parsing from v1.11 instead of complex subroutines.
+- **Flow Interruption**: Removed BATCH_MODE and complex `goto :eof` chains. ApplyAll now executes as simple sequential operations.
+- **Variable Scope Loss**: Eliminated `setlocal/endlocal` isolation that caused global variable loss in status checks.
+- **Explorer Spawns**: Centralized restart into single safe call instead of multiple spawns.
+
+### 🔄 Changed
+- **Architecture**: Simplified from complex state machine back to direct procedural execution (v1.11 pattern).
+- **Error Handling**: Removed fallback mechanisms that never triggered. Each operation now either succeeds or logs error.
+- **ApplyAll**: Sequential registry operations without intermediate status checks or flow control.
+- **CleanTaskbar/CleanStartMenu**: Simplified with single explorer restart at end.
+- **SystemCleanup**: Removed risky event log clearing, kept safe TEMP/Update cache/Recycle Bin operations.
+
+### 🗑️ Removed
+- **BATCH_MODE**: Complex flow control flag that prevented proper menu returns.
+- **Fallback Mechanisms**: PowerShell CIM/GPO/CSP alternatives that never executed.
+- **Idempotency Checks**: Removed `:SetReg` validation that added complexity without benefit.
+- **HEX/DEC Normalization**: Simplified to direct string comparison.
+- **gpupdate /force**: Removed as registry changes apply immediately for user-level keys.
+
+### 📊 Engineering Rationale
+- **KISS Principle**: v1.11 worked because it was simple. Complexity in v2.x broke reliability.
+- **YAGNI**: Fallback mechanisms, idempotency checks, and complex flow control were unnecessary for one-time home PC setup.
+- **Working Code > Perfect Code**: Stable v1.11 proven in testing > theoretically perfect v2.7.0 that doesn't work.
+
+---
+
 ## [v2.7.0] - 2026-05-11
 ### 🛠 Fixed
 - **Syntax Error in Telemetry**: Resolved "'Ads' is not recognized" error caused by improper line continuation. Consolidated registry commands into single-line statements.

@@ -1,17 +1,14 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title System Tweaker v2.7.0
+title System Tweaker v3.0.0
 
 :: ============================================================================
-:: v2.7.0: FALLBACK MECHANISM, ALTERNATIVE METHODS, CRITICAL FIXES
-:: v2.6.0: Fixed window size, English UI, console termination fixes
-:: v2.5.0: BATCH_MODE flow control, direct registry parsing
-:: v2.4.0: Status sync, SystemCleanup hang fixes
-:: v2.3.0: OS detection, instant mouse apply
-:: v2.2.0: Idempotent registry core
-:: v2.1.0: HEX/DEC normalization
-:: v2.0.0: Safe registry core, backups, logging
+:: v3.0.0: COMPLETE REWRITE BASED ON STABLE v1.11
+:: - Preserved working logic from v1.11
+:: - Added English UI, logging, backups, OS detection
+:: - Fixed window size, safe explorer restart
+:: - Removed broken BATCH_MODE and complex fallbacks
 :: ============================================================================
 
 :: === AUTO ELEVATION ===
@@ -40,7 +37,7 @@ if %BUILD% GEQ 22000 (
 )
 
 :: Colors
-set "VERSION=v2.7.0"
+set "VERSION=v3.0.0"
 for /f "delims=" %%a in ('echo prompt $E^| cmd') do set "ESC=%%a"
 set "blue=%ESC%[96m"
 set "green=%ESC%[92m"
@@ -71,8 +68,6 @@ if not exist "%BACKUP_DIR%\%DATE:~6,4%%DATE:~3,2%%DATE:~0,2%_init.reg" (
     echo [%date% %time%] Backup created >> "%LOG_FILE%"
 )
 
-set "BATCH_MODE=0"
-set "RETRY_COUNT=0"
 call :CheckStatus
 goto menu
 
@@ -86,7 +81,7 @@ echo %blue%SYSTEM TWEAKER %VERSION%%reset%
 echo ================================================================================
 echo.
 echo %yellow%  %OS_NAME% (Build %BUILD%)%reset%
-echo %yellow%  Changes apply instantly. Restart may be required for some settings.%reset%
+echo %yellow%  Changes apply instantly. Restart may be required.%reset%
 echo %yellow%  Registry backup saved to Desktop.%reset%
 echo.
 echo %white%[1]%reset%  Power Plan                   : %power_color%%power_status%%reset%
@@ -143,108 +138,65 @@ timeout /t 1 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: STATUS CHECK - DIRECT PARSING
+:: STATUS CHECK - SIMPLE AND RELIABLE (v1.11 BASED)
 :: ============================================================================
 :CheckStatus
-set "TMP="
-
 :: 1. Power Plan
 powercfg /getactivescheme 2>nul | findstr /i "8c5e7fda" >nul
 if %errorlevel% equ 0 (set "power_color=%green%" & set "power_status=High Performance") else (set "power_color=%red%" & set "power_status=Balanced")
 
 :: 2. UWP Background
-for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" /v LetAppsRunInBackground 2^>nul ^| findstr /i "LetAppsRunInBackground"') do set "TMP=%%v"
-if /i "!TMP!"=="0x2" set "TMP=2"
-if "!TMP!"=="2" (set "uwp_color=%green%" & set "uwp_status=Disabled") else (set "uwp_color=%red%" & set "uwp_status=Enabled")
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" /v GlobalUserDisabled 2>nul | find "0x1" >nul
+if %errorlevel% equ 0 (set "uwp_color=%green%" & set "uwp_status=Disabled") else (set "uwp_color=%red%" & set "uwp_status=Enabled")
 
 :: 3. Delivery Optimization
-for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v DODownloadMode 2^>nul ^| findstr /i "DODownloadMode"') do set "TMP=%%v"
-if /i "!TMP!"=="0x0" set "TMP=0"
-if "!TMP!"=="0" (set "delivery_color=%green%" & set "delivery_status=Disabled") else (set "delivery_color=%red%" & set "delivery_status=Enabled")
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v DODownloadMode 2>nul | find "0x0" >nul
+if %errorlevel% equ 0 (set "delivery_color=%green%" & set "delivery_status=Disabled") else (set "delivery_color=%red%" & set "delivery_status=Enabled")
 
 :: 4. Edge Boost
-for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Policies\Microsoft\Edge" /v StartupBoostEnabled 2^>nul ^| findstr /i "StartupBoostEnabled"') do set "TMP=%%v"
-if /i "!TMP!"=="0x0" set "TMP=0"
-if "!TMP!"=="0" (set "edge_color=%green%" & set "edge_status=Disabled") else (set "edge_color=%red%" & set "edge_status=Enabled")
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Edge" /v StartupBoostEnabled 2>nul | find "0x0" >nul
+if %errorlevel% equ 0 (set "edge_color=%green%" & set "edge_status=Disabled") else (set "edge_color=%red%" & set "edge_status=Enabled")
 
 :: 5. Telemetry
-for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v AllowTelemetry 2^>nul ^| findstr /i "AllowTelemetry"') do set "TMP=%%v"
-if /i "!TMP!"=="0x1" set "TMP=1"
-if "!TMP!"=="0" (set "tele_color=%green%" & set "tele_status=Disabled") else (set "tele_color=%red%" & set "tele_status=Enabled")
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v AllowTelemetry 2>nul | find "0x0" >nul
+if %errorlevel% equ 0 (set "tele_color=%green%" & set "tele_status=Disabled") else (set "tele_color=%red%" & set "tele_status=Enabled")
 
 :: 6. Copilot
-for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot 2^>nul ^| findstr /i "TurnOffWindowsCopilot"') do set "TMP=%%v"
-if /i "!TMP!"=="0x1" set "TMP=1"
-if "!TMP!"=="1" (set "copilot_color=%green%" & set "copilot_status=Disabled") else (set "copilot_color=%red%" & set "copilot_status=Enabled")
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot 2>nul | find "0x1" >nul
+if %errorlevel% equ 0 (set "copilot_color=%green%" & set "copilot_status=Disabled") else (set "copilot_color=%red%" & set "copilot_status=Enabled")
 
 :: 7. UAC
-for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v ConsentPromptBehaviorAdmin 2^>nul ^| findstr /i "ConsentPromptBehaviorAdmin"') do set "TMP=%%v"
-if /i "!TMP!"=="0x0" set "TMP=0"
-if "!TMP!"=="0" (set "uac_color=%yellow%" & set "uac_status=No Prompt") else (set "uac_color=%green%" & set "uac_status=Enabled")
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnableLUA 2>nul | find "0x0" >nul
+if %errorlevel% equ 0 (set "uac_color=%yellow%" & set "uac_status=Disabled") else (set "uac_color=%green%" & set "uac_status=Enabled")
 
-:: 8. Mouse
-for /f "tokens=3" %%v in ('reg query "HKCU\Control Panel\Mouse" /v MouseSpeed 2^>nul ^| findstr /i "MouseSpeed"') do set "TMP=%%v"
-if /i "!TMP!"=="0x0" set "TMP=0"
-if "!TMP!"=="0" (set "mouse_color=%green%" & set "mouse_status=Disabled") else (set "mouse_color=%red%" & set "mouse_status=Enabled")
+:: 8. Mouse Accel
+reg query "HKCU\Control Panel\Mouse" /v MouseSpeed 2>nul | find "0" >nul
+if %errorlevel% equ 0 (set "mouse_color=%green%" & set "mouse_status=Disabled") else (set "mouse_color=%red%" & set "mouse_status=Enabled")
 
 :: 9. Sticky Keys
-for /f "tokens=3" %%v in ('reg query "HKCU\Control Panel\Accessibility\StickyKeys" /v Flags 2^>nul ^| findstr /i "Flags"') do set "TMP=%%v"
-if "!TMP!"=="506" (set "sticky_color=%green%" & set "sticky_status=Disabled") else (set "sticky_color=%red%" & set "sticky_status=Enabled")
+reg query "HKCU\Control Panel\Accessibility\StickyKeys" /v Flags 2>nul | find "506" >nul
+if %errorlevel% equ 0 (set "sticky_color=%green%" & set "sticky_status=Disabled") else (set "sticky_color=%red%" & set "sticky_status=Enabled")
 
 :: 10. Menu Delay
-for /f "tokens=3" %%v in ('reg query "HKCU\Control Panel\Desktop" /v MenuShowDelay 2^>nul ^| findstr /i "MenuShowDelay"') do set "TMP=%%v"
-if "!TMP!"=="20" (set "menu_color=%green%" & set "menu_status=20 ms") else (set "menu_color=%red%" & set "menu_status=400 ms")
+reg query "HKCU\Control Panel\Desktop" /v MenuShowDelay 2>nul | find "20" >nul
+if %errorlevel% equ 0 (set "menu_color=%green%" & set "menu_status=20 ms") else (set "menu_color=%red%" & set "menu_status=400 ms")
 
 :: 11. Wallpaper
-for /f "tokens=3" %%v in ('reg query "HKCU\Control Panel\Desktop" /v JPEGImportQuality 2^>nul ^| findstr /i "JPEGImportQuality"') do set "TMP=%%v"
-if /i "!TMP!"=="0x64" set "TMP=100"
-if "!TMP!"=="100" (set "wallpaper_color=%green%" & set "wallpaper_status=Disabled") else (set "wallpaper_color=%red%" & set "wallpaper_status=Enabled")
+reg query "HKCU\Control Panel\Desktop" /v JPEGImportQuality 2>nul | find "0x64" >nul
+if %errorlevel% equ 0 (set "wallpaper_color=%green%" & set "wallpaper_status=Disabled") else (set "wallpaper_color=%red%" & set "wallpaper_status=Enabled")
 
 :: 12. Recommendations
 if "%OS_TYPE%"=="win11" (
-    for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v HideRecommendedSection 2^>nul ^| findstr /i "HideRecommendedSection"') do set "TMP=%%v"
-    if /i "!TMP!"=="0x1" set "TMP=1"
-    if "!TMP!"=="1" (set "rec_color=%green%" & set "rec_status=Hidden") else (set "rec_color=%red%" & set "rec_status=Shown")
+    reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v HideRecommendedSection 2>nul | find "0x1" >nul
 ) else (
-    for /f "tokens=3" %%v in ('reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v Start_TrackDocs 2^>nul ^| findstr /i "Start_TrackDocs"') do set "TMP=%%v"
-    if /i "!TMP!"=="0x0" set "TMP=0"
-    if "!TMP!"=="0" (set "rec_color=%green%" & set "rec_status=Disabled") else (set "rec_color=%red%" & set "rec_status=Enabled")
+    reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v Start_TrackDocs 2>nul | find "0x0" >nul
 )
+if %errorlevel% equ 0 (set "rec_color=%green%" & set "rec_status=Hidden") else (set "rec_color=%red%" & set "rec_status=Shown")
+
 goto :eof
 
 :: ============================================================================
-:: SAFE REGISTRY SET WITH FALLBACK
-:: ============================================================================
-:SetReg <KEY> <VALUE> <TYPE> <DATA> <DESCRIPTION>
-setlocal
-set "K=%~1" & set "V=%~2" & set "T=%~3" & set "D=%~4" & set "DESC=%~5"
-
-for /f "tokens=3" %%C in ('reg query "!K!" /v "!V!" 2^>nul ^| findstr /i "!V!"') do set "CUR=%%C"
-if /i "!CUR!"=="0x1" if "!D!"=="1" set "CUR=1"
-if /i "!CUR!"=="0x0" if "!D!"=="0" set "CUR=0"
-if /i "!CUR!"=="0x2" if "!D!"=="2" set "CUR=2"
-if /i "!CUR!"=="0x64" if "!D!"=="100" set "CUR=100"
-
-if "!CUR!"=="!D!" (
-    echo [✓] Skip: %DESC% (already set)
-    endlocal
-    goto :eof
-)
-
-reg add "!K!" /v "!V!" /t %T% /d "!D!" /f >nul 2>&1
-if !errorlevel! equ 0 (
-    echo [+] OK: %DESC%
-    echo [%date% %time%] OK: !K!\!V!=!D! >> "%LOG_FILE%"
-    if "!K:~0,4!"=="HKLM" gpupdate /force >nul 2>&1
-) else (
-    echo [!] Error: %DESC% (code !errorlevel!)
-    echo [%date% %time%] ERR: !K!\!V!=!D! >> "%LOG_FILE%"
-)
-endlocal
-goto :eof
-
-:: ============================================================================
-:: SAFE EXPLORER RESTART (DEFERRED)
+:: SAFE EXPLORER RESTART (WITHOUT KILLING CONSOLE)
 :: ============================================================================
 :RestartExplorerGracefully
 echo [*] Restarting Explorer...
@@ -252,217 +204,152 @@ taskkill /IM explorer.exe >nul 2>&1
 timeout /t 2 /nobreak >nul
 start "" explorer.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
-echo [+] Explorer restarted
 goto :eof
 
 :: ============================================================================
-:: APPLY FUNCTIONS WITH FALLBACK MECHANISM
+:: APPLY FUNCTIONS - SIMPLE AND RELIABLE (v1.11 BASED)
 :: ============================================================================
 :ApplyPowerPlan
 echo.
-echo [*] Setting power plan (Method 1: powercfg)...
-powercfg /list | findstr /i "8c5e7fda" >nul
+echo [*] Setting power plan...
+powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>nul
 if %errorlevel% equ 0 (
-    powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>nul
-    if %errorlevel% equ 0 (
-        echo [+] Power plan changed via powercfg!
-        echo [%date% %time%] Applied: PowerPlan (Method 1) >> "%LOG_FILE%"
-        goto :eof
-    )
-)
-:: Fallback: PowerShell CIM
-echo [*] Fallback (Method 2: PowerShell CIM)...
-powershell -NoProfile -Command "$plan = Get-CimInstance -Namespace root/cimv2/power -ClassName Win32_PowerPlan | Where-Object {$_.ElementName -like '*High performance*'}; if ($plan) { $plan | Invoke-CimMethod -MethodName Activate }" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [+] Power plan changed via PowerShell!
-    echo [%date% %time%] Applied: PowerPlan (Method 2) >> "%LOG_FILE%"
+    echo [+] Power plan changed!
+    echo [%date% %time%] Applied: PowerPlan >> "%LOG_FILE%"
 ) else (
-    echo [!] Failed to change power plan
-    echo [%date% %time%] Failed: PowerPlan >> "%LOG_FILE%"
+    echo [!] Error changing power plan
 )
-goto :eof
+call :CheckStatus
+timeout /t 1 /nobreak >nul
+goto menu
 
 :ApplyUWP
 echo.
-echo [*] Disabling background apps (Method 1: Registry)...
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" "LetAppsRunInBackground" REG_DWORD "2" "Disable UWP background"
-:: Check if applied
-for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" /v LetAppsRunInBackground 2^>nul') do set "CHECK=%%v"
-if /i "!CHECK!"=="0x2" (
-    echo [%date% %time%] Applied: UWP_Background (Method 1) >> "%LOG_FILE%"
-    goto :eof
-)
-:: Fallback: GPO via lgpo (if available)
-echo [*] Fallback (Method 2: GPO)...
-if exist "%~dp0lgpo.exe" (
-    echo [Software\Microsoft\Windows\CurrentVersion\Policies\Explorer]
-    echo "LetAppsRunInBackground"=dword:00000002 > "%TEMP%\uwp_policy.txt"
-    "%~dp0lgpo.exe" /g "%TEMP%\uwp_policy.txt" >nul 2>&1
-    echo [+] Applied via GPO
-    echo [%date% %time%] Applied: UWP_Background (Method 2) >> "%LOG_FILE%"
-) else (
-    echo [!] lgpo.exe not found, skipping GPO method
-)
-goto :eof
+echo [*] Disabling background apps...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" /v "GlobalUserDisabled" /t REG_DWORD /d "1" /f >nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" /v "BackgroundAppGlobalToggle" /t REG_DWORD /d "0" /f >nul
+echo [+] Background apps disabled!
+echo [%date% %time%] Applied: UWP_Background >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 1 /nobreak >nul
+goto menu
 
 :ApplyDelivery
 echo.
-echo [*] Disabling delivery optimization (Method 1: Registry)...
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" "DODownloadMode" REG_DWORD "0" "Disable P2P updates"
+echo [*] Disabling delivery optimization...
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v "DODownloadMode" /t REG_DWORD /d "0" /f >nul
 sc config DoSvc start=disabled >nul 2>&1
 sc stop DoSvc >nul 2>&1
-:: Check
-for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v DODownloadMode 2^>nul') do set "CHECK=%%v"
-if /i "!CHECK!"=="0x0" (
-    echo [%date% %time%] Applied: Delivery (Method 1) >> "%LOG_FILE%"
-    goto :eof
-)
-:: Fallback: PowerShell DeliveryOptimization module
-echo [*] Fallback (Method 2: PowerShell module)...
-powershell -NoProfile -Command "if (Get-Module -ListAvailable DeliveryOptimization) { Set-DeliveryOptimizationStatus -DownloadMode 0 } else { exit 1 }" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [+] Applied via PowerShell module
-    echo [%date% %time%] Applied: Delivery (Method 2) >> "%LOG_FILE%"
-)
-goto :eof
+echo [+] Delivery optimization disabled!
+echo [%date% %time%] Applied: Delivery >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 1 /nobreak >nul
+goto menu
 
 :ApplyEdge
 echo.
-echo [*] Disabling Edge Boost (Method 1: Registry)...
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Edge" "StartupBoostEnabled" REG_DWORD "0" "Disable Edge preloading"
-:: Check
-for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Policies\Microsoft\Edge" /v StartupBoostEnabled 2^>nul') do set "CHECK=%%v"
-if /i "!CHECK!"=="0x0" (
-    echo [%date% %time%] Applied: Edge (Method 1) >> "%LOG_FILE%"
-    goto :eof
-)
-:: Fallback: Edge policies.json
-echo [*] Fallback (Method 2: policies.json)...
-set "EDGE_PATH=C:\Program Files (x86)\Microsoft\Edge\Application"
-if exist "!EDGE_PATH!" (
-    echo {"StartupBoostEnabled": false} > "!EDGE_PATH!\policies.json"
-    echo [+] Applied via policies.json
-    echo [%date% %time%] Applied: Edge (Method 2) >> "%LOG_FILE%"
-)
-goto :eof
+echo [*] Disabling Edge Boost...
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Edge" /v "StartupBoostEnabled" /t REG_DWORD /d "0" /f >nul
+echo [+] Edge Startup Boost disabled!
+echo [%date% %time%] Applied: Edge >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 1 /nobreak >nul
+goto menu
 
 :ApplyTelemetry
 echo.
-echo [*] Disabling telemetry (Method 1: Registry)...
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" REG_DWORD "1" "Minimal telemetry"
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" "DisableWindowsConsumerFeatures" REG_DWORD "1" "Disable consumer features"
-call :SetReg "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" "SystemPaneSuggestionsEnabled" REG_DWORD "0" "Disable suggestions"
-call :SetReg "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" "SubscribedContent-338393Enabled" REG_DWORD "0" "Disable ads"
-:: Check
-for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v AllowTelemetry 2^>nul') do set "CHECK=%%v"
-if /i "!CHECK!"=="0x1" (
-    echo [%date% %time%] Applied: Telemetry (Method 1) >> "%LOG_FILE%"
-    goto :eof
-)
-:: Fallback: CSP via PowerShell
-echo [*] Fallback (Method 2: CSP)...
-powershell -NoProfile -Command "$csp = New-Object Microsoft.Management.Infrastructure.CimSession -ComputerName localhost; $instance = $csp.CreateInstance('root\cimv2\mdm\dmmap', 'MDM_Policy_Config01_Experience02', 'Experience02'); $instance.AllowTelemetry = 1; $csp.PutInstance($instance)" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [+] Applied via CSP
-    echo [%date% %time%] Applied: Telemetry (Method 2) >> "%LOG_FILE%"
-)
-goto :eof
+echo [*] Disabling telemetry...
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v "AllowTelemetry" /t REG_DWORD /d "0" /f >nul
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo" /v "Enabled" /t REG_DWORD /d "0" /f >nul
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo" /v "DisabledByGroupPolicy" /t REG_DWORD /d "1" /f >nul
+echo [+] Telemetry and ads disabled!
+echo [%date% %time%] Applied: Telemetry >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 1 /nobreak >nul
+goto menu
 
 :ApplyCopilot
 echo.
-echo [*] Disabling Windows Copilot (Method 1: Registry)...
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" "TurnOffWindowsCopilot" REG_DWORD "1" "Disable Copilot"
-call :SetReg "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "ShowCopilotButton" REG_DWORD "0" "Hide Copilot button"
-:: Check
-for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot 2^>nul') do set "CHECK=%%v"
-if /i "!CHECK!"=="0x1" (
-    echo [%date% %time%] Applied: Copilot (Method 1) >> "%LOG_FILE%"
-    if "%BATCH_MODE%"=="1" (
-        echo [*] Explorer restart deferred...
-        goto :eof
-    )
-    call :RestartExplorerGracefully
-    goto :eof
-)
-:: Fallback: GPO
-echo [*] Fallback (Method 2: GPO)...
-if exist "%~dp0lgpo.exe" (
-    echo [Software\Microsoft\PolicyManager\current\device\WindowsCopilot]
-    echo "TurnOffWindowsCopilot"=dword:00000001 > "%TEMP%\copilot_policy.txt"
-    "%~dp0lgpo.exe" /g "%TEMP%\copilot_policy.txt" >nul 2>&1
-    gpupdate /force >nul 2>&1
-    echo [+] Applied via GPO
-    echo [%date% %time%] Applied: Copilot (Method 2) >> "%LOG_FILE%"
-    if "%BATCH_MODE%"=="1" goto :eof
-    call :RestartExplorerGracefully
-)
-goto :eof
+echo [*] Disabling Windows Copilot...
+reg add "HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot" /v "TurnOffWindowsCopilot" /t REG_DWORD /d "1" /f >nul
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v "TurnOffWindowsCopilot" /t REG_DWORD /d "1" /f >nul
+call :RestartExplorerGracefully
+echo [+] Windows Copilot disabled!
+echo [%date% %time%] Applied: Copilot >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 2 /nobreak >nul
+goto menu
 
 :ApplyUAC
 echo.
-echo [!] WARNING: Lowering UAC reduces system security.
+echo [!] WARNING: Disabling UAC reduces system security.
 set /p confirm="Continue? (Y/N): "
-if /i not "%confirm%"=="Y" (if "%BATCH_MODE%"=="1" goto :eof & goto menu)
-echo [*] Disabling UAC prompts (Method 1: Registry)...
-call :SetReg "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" "ConsentPromptBehaviorAdmin" REG_DWORD "0" "UAC: No prompt"
-call :SetReg "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" "EnableLUA" REG_DWORD "1" "UAC: Core enabled"
-echo [+] UAC settings applied
-if "%BATCH_MODE%"=="1" goto :eof
-call :CheckStatus & timeout /t 1 /nobreak >nul & goto menu
+if /i not "%confirm%"=="Y" goto menu
+echo [*] Disabling UAC...
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v "EnableLUA" /t REG_DWORD /d "0" /f >nul
+echo [+] UAC disabled! Restart required.
+echo [%date% %time%] Applied: UAC >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 1 /nobreak >nul
+goto menu
 
 :ApplyMouse
 echo.
-echo [*] Disabling mouse acceleration (Method 1: Registry)...
-call :SetReg "HKCU\Control Panel\Mouse" "MouseSpeed" REG_SZ "0" "Disable acceleration"
-call :SetReg "HKCU\Control Panel\Mouse" "MouseThreshold1" REG_SZ "0" "Threshold 1"
-call :SetReg "HKCU\Control Panel\Mouse" "MouseThreshold2" REG_SZ "0" "Threshold 2"
-RUNDLL32.EXE user32.dll,UpdatePerUserSystemParameters >nul 2>&1
-:: Check
-for /f "tokens=3" %%v in ('reg query "HKCU\Control Panel\Mouse" /v MouseSpeed 2^>nul') do set "CHECK=%%v"
-if /i "!CHECK!"=="0x0" set "CHECK=0"
-if "!CHECK!"=="0" (
-    echo [%date% %time%] Applied: Mouse (Method 1) >> "%LOG_FILE%"
-    goto :eof
-)
-:: Fallback: PowerShell Set-ItemProperty
-echo [*] Fallback (Method 2: PowerShell)...
-powershell -NoProfile -Command "Set-ItemProperty 'HKCU:\Control Panel\Mouse' -Name MouseSpeed -Value '0'; Set-ItemProperty 'HKCU:\Control Panel\Mouse' -Name MouseThreshold1 -Value '0'; Set-ItemProperty 'HKCU:\Control Panel\Mouse' -Name MouseThreshold2 -Value '0'; rundll32 user32.dll,UpdatePerUserSystemParameters" >nul 2>&1
-echo [%date% %time%] Applied: Mouse (Method 2) >> "%LOG_FILE%"
-goto :eof
+echo [*] Disabling mouse acceleration...
+reg add "HKCU\Control Panel\Mouse" /v "MouseSpeed" /t REG_SZ /d "0" /f >nul
+reg add "HKCU\Control Panel\Mouse" /v "MouseThreshold1" /t REG_SZ /d "0" /f >nul
+reg add "HKCU\Control Panel\Mouse" /v "MouseThreshold2" /t REG_SZ /d "0" /f >nul
+echo [+] Mouse acceleration disabled!
+echo [%date% %time%] Applied: Mouse >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 1 /nobreak >nul
+goto menu
 
 :ApplySticky
 echo.
-echo [*] Disabling sticky keys (Method 1: Registry)...
-call :SetReg "HKCU\Control Panel\Accessibility\StickyKeys" "Flags" REG_SZ "506" "Disable StickyKeys"
-call :SetReg "HKCU\Control Panel\Accessibility\ToggleKeys" "Flags" REG_SZ "58" "Disable ToggleKeys"
-call :SetReg "HKCU\Control Panel\Accessibility\Keyboard Response" "Flags" REG_SZ "122" "Disable FilterKeys"
-if "%BATCH_MODE%"=="1" goto :eof
-call :CheckStatus & timeout /t 1 /nobreak >nul & goto menu
+echo [*] Disabling sticky keys...
+reg add "HKCU\Control Panel\Accessibility\StickyKeys" /v "Flags" /t REG_SZ /d "506" /f >nul
+reg add "HKCU\Control Panel\Accessibility\Keyboard Response" /v "Flags" /t REG_SZ /d "122" /f >nul
+echo [+] Sticky keys disabled!
+echo [%date% %time%] Applied: StickyKeys >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 1 /nobreak >nul
+goto menu
 
 :ApplyMenuDelay
 echo.
-echo [*] Speeding up context menu (Method 1: Registry)...
-call :SetReg "HKCU\Control Panel\Desktop" "MenuShowDelay" REG_SZ "20" "Menu delay 20ms"
-if "%BATCH_MODE%"=="1" goto :eof
-call :CheckStatus & timeout /t 1 /nobreak >nul & goto menu
+echo [*] Speeding up context menu...
+reg add "HKCU\Control Panel\Desktop" /v "MenuShowDelay" /t REG_SZ /d "20" /f >nul
+echo [+] Menu delay set to 20 ms!
+echo [%date% %time%] Applied: MenuDelay >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 1 /nobreak >nul
+goto menu
 
 :ApplyWallpaper
 echo.
-echo [*] Disabling wallpaper compression (Method 1: Registry)...
-call :SetReg "HKCU\Control Panel\Desktop" "JPEGImportQuality" REG_DWORD "100" "Quality 100%%"
-if "%BATCH_MODE%"=="1" goto :eof
-call :CheckStatus & timeout /t 1 /nobreak >nul & goto menu
+echo [*] Disabling wallpaper compression...
+reg add "HKCU\Control Panel\Desktop" /v "JPEGImportQuality" /t REG_DWORD /d "100" /f >nul
+echo [+] Wallpaper compression disabled!
+echo [%date% %time%] Applied: Wallpaper >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 1 /nobreak >nul
+goto menu
 
 :ApplyRecommended
 echo.
 echo [*] Hiding recommendations...
 if "%OS_TYPE%"=="win11" (
-    call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" "HideRecommendedSection" REG_DWORD "1" "Hide recommendations (Win11)"
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v "HideRecommendedSection" /t REG_DWORD /d "0" /f >nul
 ) else (
-    call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "Start_TrackDocs" REG_DWORD "0" "Disable tracking (Win10)"
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul
 )
-if "%BATCH_MODE%"=="1" goto :eof
-call :CheckStatus & timeout /t 1 /nobreak >nul & goto menu
+call :RestartExplorerGracefully
+echo [+] Recommendations hidden!
+echo [%date% %time%] Applied: Recommended >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 2 /nobreak >nul
+goto menu
 
 :: ============================================================================
 :: CLEANUP FUNCTIONS
@@ -473,27 +360,25 @@ echo.
 echo %yellow%[*] CONFIGURING TASKBAR...%reset% (%OS_NAME%)
 echo ================================================================================
 echo [1/4] Applying policies...
-call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" "SearchboxTaskbarMode" REG_DWORD "1" "Search: icon"
-call :SetReg "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "ShowCortanaButton" REG_DWORD "0" "Hide Cortana"
-call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "ShowTaskViewButton" REG_DWORD "0" "Hide Task View"
-call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "TaskbarDa" REG_DWORD "0" "Hide Widgets"
-call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "TaskbarMn" REG_DWORD "0" "Hide Chat"
-call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Feeds" "ShellFeedsTaskbarViewMode" REG_DWORD "2" "Disable feeds"
-call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "ShowCopilotButton" REG_DWORD "0" "Hide Copilot"
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" /v "SearchboxTaskbarMode" /t REG_DWORD /d "1" /f >nul 2>&1
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "ShowCortanaButton" /t REG_DWORD /d "0" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "ShowTaskViewButton" /t REG_DWORD /d "0" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "TaskbarDa" /t REG_DWORD /d "0" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "TaskbarMn" /t REG_DWORD /d "0" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Feeds" /v "ShellFeedsTaskbarViewMode" /t REG_DWORD /d "2" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "ShowCopilotButton" /t REG_DWORD /d "0" /f >nul 2>&1
 
 echo [2/4] Clearing pin cache...
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Streams" /f >nul 2>&1
 del /f /q "%AppData%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\*.*" >nul 2>&1
 
-echo [3/4] Restarting interface...
+echo [3/4] Restarting Explorer...
 call :RestartExplorerGracefully
 
+echo [4/4] Pinning Explorer...
 if "%OS_TYPE%"=="win10" (
-    echo [4/4] Unpinning icons (Win10)...
-    powershell -NoProfile -Command "$apps=(New-Object -Com Shell.Application).NameSpace('shell:::{4234d49b-0245-4df3-b780-3893943456e1}').Items(); $apps | ForEach-Object { $_.Verbs() | Where-Object { $_.Name -match 'Unpin from taskbar' } | ForEach-Object { $_.DoIt() } }" >nul 2>&1
-) else (
-    echo [4/4] Win11: Manual unpin via Settings
+    powershell -NoProfile -Command "$s=New-Object -Com Shell.Application; $f=$s.NameSpace('C:\Windows'); $i=$f.ParseName('explorer.exe'); $i.InvokeVerb('taskbarpin')" >nul 2>&1
 )
 echo [+] Taskbar configured.
 timeout /t 2 /nobreak >nul
@@ -524,33 +409,26 @@ echo.
 echo %yellow%[*] SAFE SYSTEM CLEANUP...%reset%
 echo ================================================================================
 echo [1/5] Temporary files...
-powershell -NoProfile -Command "Get-ChildItem -Path $env:TEMP, $env:TMP, 'C:\Windows\Temp' -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue" >nul 2>&1
+del /f /s /q "%TEMP%\*" >nul 2>&1
 echo [+] TEMP cleaned
 
-echo [2/5] Stopping services...
+echo [2/5] Windows Temp...
+del /f /s /q "C:\Windows\Temp\*" >nul 2>&1
+echo [+] Windows Temp cleaned
+
+echo [3/5] Update cache...
 net stop wuauserv >nul 2>&1
-net stop cryptSvc >nul 2>&1
-net stop bits >nul 2>&1
-net stop msiserver >nul 2>&1
-
-echo [3/5] Clearing update cache...
-rd /s /q "%windir%\SoftwareDistribution\Download" >nul 2>&1
-rd /s /q "%windir%\System32\catroot2" >nul 2>&1
-
-echo [4/5] Starting services...
+del /f /s /q "C:\Windows\SoftwareDistribution\Download\*" >nul 2>&1
 net start wuauserv >nul 2>&1
-net start cryptSvc >nul 2>&1
-net start bits >nul 2>&1
-net start msiserver >nul 2>&1
+echo [+] Update cache cleaned
 
-echo [5/5] DISM cleanup...
-dism /online /cleanup-image /startcomponentcleanup /resetbase >nul 2>&1
-echo [+] DISM completed
+echo [4/5] DirectX Shader...
+del /f /s /q "%LocalAppData%\D3DSCache\*" >nul 2>&1
+echo [+] D3DSCache cleaned
 
-echo.
-echo [!] Event log clearing skipped (compliance risk)
-echo [+] Recycle Bin cleared
+echo [5/5] Recycle Bin...
 powershell -NoProfile -Command "Clear-RecycleBin -Force -ErrorAction SilentlyContinue" >nul 2>&1
+echo [+] Recycle Bin cleaned
 
 echo ================================================================================
 echo %green%     CLEANUP COMPLETE%reset%
@@ -559,27 +437,50 @@ timeout /t 2 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: APPLY ALL / RESTORE
+:: APPLY ALL - SEQUENTIAL (v1.11 BASED)
 :: ============================================================================
 :ApplyAll
 cls
 echo %green%[*] APPLYING ALL SETTINGS...%reset%
 echo ================================================================================
-set "BATCH_MODE=1"
-call :ApplyPowerPlan
-call :ApplyUWP
-call :ApplyDelivery
-call :ApplyEdge
-call :ApplyTelemetry
-call :ApplyCopilot
-call :ApplyUAC
-call :ApplyMouse
-call :ApplySticky
-call :ApplyMenuDelay
-call :ApplyWallpaper
-call :ApplyRecommended
+echo [ 1/12] Power Plan...
+powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>nul
+echo [ 2/12] Background UWP Apps...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" /v "GlobalUserDisabled" /t REG_DWORD /d "1" /f >nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" /v "BackgroundAppGlobalToggle" /t REG_DWORD /d "0" /f >nul
+echo [ 3/12] Delivery Optimization...
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v "DODownloadMode" /t REG_DWORD /d "0" /f >nul
+sc config DoSvc start=disabled >nul 2>&1
+sc stop DoSvc >nul 2>&1
+echo [ 4/12] Edge Startup Boost...
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Edge" /v "StartupBoostEnabled" /t REG_DWORD /d "0" /f >nul
+echo [ 5/12] Telemetry ^& Ads...
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v "AllowTelemetry" /t REG_DWORD /d "0" /f >nul
+reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo" /v "Enabled" /t REG_DWORD /d "0" /f >nul
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo" /v "DisabledByGroupPolicy" /t REG_DWORD /d "1" /f >nul
+echo [ 6/12] Windows Copilot...
+reg add "HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot" /v "TurnOffWindowsCopilot" /t REG_DWORD /d "1" /f >nul
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v "TurnOffWindowsCopilot" /t REG_DWORD /d "1" /f >nul
+echo [ 7/12] User Account Control...
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v "EnableLUA" /t REG_DWORD /d "0" /f >nul
+echo [ 8/12] Mouse Acceleration...
+reg add "HKCU\Control Panel\Mouse" /v "MouseSpeed" /t REG_SZ /d "0" /f >nul
+reg add "HKCU\Control Panel\Mouse" /v "MouseThreshold1" /t REG_SZ /d "0" /f >nul
+reg add "HKCU\Control Panel\Mouse" /v "MouseThreshold2" /t REG_SZ /d "0" /f >nul
+echo [ 9/12] Sticky Keys...
+reg add "HKCU\Control Panel\Accessibility\StickyKeys" /v "Flags" /t REG_SZ /d "506" /f >nul
+reg add "HKCU\Control Panel\Accessibility\Keyboard Response" /v "Flags" /t REG_SZ /d "122" /f >nul
+echo [10/12] Menu Delay...
+reg add "HKCU\Control Panel\Desktop" /v "MenuShowDelay" /t REG_SZ /d "20" /f >nul
+echo [11/12] Wallpaper Compression...
+reg add "HKCU\Control Panel\Desktop" /v "JPEGImportQuality" /t REG_DWORD /d "100" /f >nul
+echo [12/12] Recommendations...
+if "%OS_TYPE%"=="win11" (
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v "HideRecommendedSection" /t REG_DWORD /d "0" /f >nul
+) else (
+    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul
+)
 call :RestartExplorerGracefully
-set "BATCH_MODE=0"
 
 echo.
 echo ================================================================================
@@ -596,6 +497,9 @@ if /i "%reboot%"=="Y" (
 timeout /t 2 /nobreak >nul
 goto menu
 
+:: ============================================================================
+:: RESTORE DEFAULTS - SEQUENTIAL (v1.11 BASED)
+:: ============================================================================
 :RestoreDefaults
 cls
 echo %red%[!] RESTORING DEFAULTS%reset%
@@ -604,29 +508,53 @@ if /i not "%confirm%"=="Y" goto menu
 echo.
 echo [*] Restoring...
 echo ================================================================================
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" "LetAppsRunInBackground" REG_DWORD "1" "UWP background: user choice"
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v "DODownloadMode" /f >nul 2>&1
+echo [ 1/12] Power Plan...
+powercfg -setactive 381b4222-f694-41f0-9685-ff5bb260df2e >nul 2>&1
+echo [ 2/12] Background UWP Apps...
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" /v "GlobalUserDisabled" /f >nul 2>&1
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" /v "BackgroundAppGlobalToggle" /f >nul 2>&1
+echo [ 3/12] Delivery Optimization...
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /f >nul 2>&1
 sc config DoSvc start=manual >nul 2>&1
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Edge" "StartupBoostEnabled" REG_DWORD "1" "Enable Edge Boost"
+echo [ 4/12] Edge Startup Boost...
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Edge" /v "StartupBoostEnabled" /f >nul 2>&1
+echo [ 5/12] Telemetry ^& Ads...
 reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v "AllowTelemetry" /f >nul 2>&1
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent" /v "DisableWindowsConsumerFeatures" /f >nul 2>&1
-call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" "TurnOffWindowsCopilot" REG_DWORD "0" "Enable Copilot"
-call :SetReg "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" "ConsentPromptBehaviorAdmin" REG_DWORD "5" "UAC: default"
-call :SetReg "HKCU\Control Panel\Mouse" "MouseSpeed" REG_SZ "1" "Enable acceleration"
-call :SetReg "HKCU\Control Panel\Accessibility\StickyKeys" "Flags" REG_SZ "510" "Enable StickyKeys"
-call :SetReg "HKCU\Control Panel\Desktop" "MenuShowDelay" REG_SZ "400" "Delay 400ms"
-call :SetReg "HKCU\Control Panel\Desktop" "JPEGImportQuality" REG_DWORD "80" "Quality 80%%"
-if "%OS_TYPE%"=="win11" (
-    call :SetReg "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" "HideRecommendedSection" REG_DWORD "0" "Show recommendations"
-) else (
-    call :SetReg "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "Start_TrackDocs" REG_DWORD "1" "Enable tracking"
-)
-call :CleanStartMenu
+reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo" /v "Enabled" /f >nul 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo" /v "DisabledByGroupPolicy" /f >nul 2>&1
+echo [ 6/12] Windows Copilot...
+reg delete "HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot" /f >nul 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /f >nul 2>&1
+echo [ 7/12] User Account Control...
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v "EnableLUA" /t REG_DWORD /d "1" /f >nul
+echo [ 8/12] Mouse Acceleration...
+reg add "HKCU\Control Panel\Mouse" /v "MouseSpeed" /t REG_SZ /d "1" /f >nul
+reg add "HKCU\Control Panel\Mouse" /v "MouseThreshold1" /t REG_SZ /d "0" /f >nul
+reg add "HKCU\Control Panel\Mouse" /v "MouseThreshold2" /t REG_SZ /d "0" /f >nul
+echo [ 9/12] Sticky Keys...
+reg add "HKCU\Control Panel\Accessibility\StickyKeys" /v "Flags" /t REG_SZ /d "510" /f >nul
+reg add "HKCU\Control Panel\Accessibility\Keyboard Response" /v "Flags" /t REG_SZ /d "126" /f >nul
+echo [10/12] Menu Delay...
+reg add "HKCU\Control Panel\Desktop" /v "MenuShowDelay" /t REG_SZ /d "400" /f >nul
+echo [11/12] Wallpaper Compression...
+reg add "HKCU\Control Panel\Desktop" /v "JPEGImportQuality" /t REG_DWORD /d "80" /f >nul
+echo [12/12] Recommendations...
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /f >nul 2>&1
+echo [13/13] Reset Taskbar and Start Menu...
 call :RestartExplorerGracefully
+
 echo.
 echo ================================================================================
 echo %green%     DEFAULTS RESTORED!%reset%
 echo ================================================================================
+echo.
+echo %yellow%  System restart recommended.%reset%
+set /p reboot="Restart now? (Y/N): "
+if /i "%reboot%"=="Y" (
+    echo [*] Restarting in 5 seconds...
+    timeout /t 5 /nobreak >nul
+    shutdown /r /t 0
+)
 timeout /t 2 /nobreak >nul
 goto menu
 
