@@ -11,8 +11,8 @@ Components maintain independent versioning and are grouped under a coordinated p
 | Component              | Version  | Status | Last Updated |
 |------------------------|----------|----|--------------|
 | **SystemTweaker.bat**  | `v3.2.0` | ✅ Production | 2026-05-11   |
-| **BloatwareRemover.bat**| `v2.4.1` |  ✅ Production   | 2026-05-11   |
-| **ExplorerConfig.bat** | `v2.7.0` | 🧪 Beta Testing | 2026-05-12   |
+| **BloatwareRemover.bat**| `v2.4.1` |  ✅ Production | 2026-05-11   |
+| **ExplorerConfig.bat** | `v2.8.0` | ✅ Production | 2026-05-12   |
 
 ---
 
@@ -283,6 +283,20 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 📂 ExplorerConfig.bat
+### [v2.8.0] - 2026-05-12
+#### 🛠 Fixed
+- **Syntax Error in [8] Recent Folders**: Resolved critical syntax error where "&" character in echo messages ("Recent & Frequent") was interpreted as command separator by CMD, causing "'Frequent is not recognised as an internal or external command'" error. Replaced all ampersands with "and" in user-facing messages.
+- **Message Consistency**: Standardized all echo messages to prevent similar command interpretation issues across the script.
+
+#### ✨ Added
+- **Production Ready Status**: ExplorerConfig.bat is now marked as production-ready after comprehensive testing on Windows 10 and Windows 11.
+
+#### 📊 Testing Status
+- **Windows 10**: ✅ All parameters working correctly
+- **Windows 11**: ✅ All parameters working correctly (including Win11-specific features)
+- **Production Ready**: ExplorerConfig.bat is now 100% ready for deployment
+
+
 ### [v2.7.0] - 2026-05-12
 #### 🛠 Fixed
 - **[Win11] Tag Color**: Changed `[Win11]` tag color from Red to White in the menu UI to match user request.
