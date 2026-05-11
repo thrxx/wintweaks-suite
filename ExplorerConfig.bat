@@ -1,19 +1,16 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title Explorer Config v2.6.0
+title Explorer Config v2.7.0
 
 :: ============================================================================
-:: v2.6.0: INTERACTIVE SYSTEM RESTART & RECYCLE BIN FIX
-:: - Fixed: Status not updating after ApplyAll/Restore.
-::   Solution: Removed internal Explorer restart logic which was causing race
-::   conditions. Implemented interactive system restart prompt (Y/N). If the
-::   user chooses N, the script reads the registry directly to update the menu
-::   status, ensuring immediate feedback without killing the script context.
-:: - Fixed: Recycle Bin not returning on [D] Restore.
-::   Solution: Separated logic for Navigation vs Desktop. Explicitly sets
-::   System.IsPinnedToNameSpaceTree=1 (for Navigation) and HideDesktopIcons=0
-::   (for Desktop) to guarantee visibility.
+:: v2.7.0: UI POLISH & RECENT FOLDERS LOGIC FIX
+:: - Fixed: Changed [Win11] tag color from Red to White to match requested UI style.
+:: - Fixed: [8] Recent Folders now explicitly disables "ShowFrequent" in addition
+::   to "ShowRecent". This prevents Windows from automatically populating the
+::   Navigation Pane/Home view with frequent folders (e.g., plugins, !soft).
+:: - Improved: Ensured Start_TrackDocs is disabled for Win11 to stop recent
+::   document tracking across the system.
 :: ============================================================================
 
 :: === AUTO ELEVATION ===
@@ -58,8 +55,9 @@ if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul
 
 set "EXEC_MODE=MANUAL"
 
-echo [%date% %time%] [%EXEC_MODE%] Explorer Config v2.6.0 Started >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Explorer Config v2.7.0 Started >> "%LOG_FILE%"
 
+:: Initial status check with explicit reset
 call :CheckExplorerStatus
 goto menu
 
@@ -69,21 +67,21 @@ goto menu
 :menu
 cls
 echo.
-echo %blue%EXPLORER CONFIG v2.6.0%reset%
+echo %blue%EXPLORER CONFIG v2.7.0%reset%
 echo ================================================================================
 echo.
 echo %yellow%  %OS_NAME% (Build %BUILD%)%reset%
 echo %yellow%  Restarting system is required for some changes.%reset%
 echo.
 echo %white%[1]%reset%  Open Explorer to              : %open_color%%open_status%%reset%
-echo %white%[2]%reset%  "Home" Button                 : %home_color%%home_status%%reset%  %red%[Win11]%reset%
-echo %white%[3]%reset%  "Gallery" Button              : %gallery_color%%gallery_status%%reset%  %red%[Win11]%reset%
+echo %white%[2]%reset%  "Home" Button                 : %home_color%%home_status%%reset%  %white%[Win11]%reset%
+echo %white%[3]%reset%  "Gallery" Button              : %gallery_color%%gallery_status%%reset%  %white%[Win11]%reset%
 echo %white%[4]%reset%  "Network" Button              : %network_color%%network_status%%reset%
 echo %white%[5]%reset%  Recycle Bin in Navigation     : %navbin_color%%navbin_status%%reset%
 echo %white%[6]%reset%  Recycle Bin on Desktop        : %desktopbin_color%%desktopbin_status%%reset%
-echo %white%[7]%reset%  Compact View                  : %compact_color%%compact_status%%reset%  %red%[Win11]%reset%
+echo %white%[7]%reset%  Compact View                  : %compact_color%%compact_status%%reset%  %white%[Win11]%reset%
 echo %white%[8]%reset%  Recent Folders (Recent)       : %recent_color%%recent_status%%reset%
-echo %white%[9]%reset%  Context Menu                  : %context_color%%context_status%%reset%  %red%[Win11]%reset%
+echo %white%[9]%reset%  Context Menu                  : %context_color%%context_status%%reset%  %white%[Win11]%reset%
 echo.
 echo --------------------------------------------------------------------------------
 echo %yellow%[R]%reset%  %yellow%Restart Explorer%reset%
@@ -274,12 +272,13 @@ timeout /t 1 /nobreak >nul
 goto menu
 
 :ToggleRecentFolders
-echo [*] Disabling Recent Folders...
+echo [*] Disabling Recent & Frequent Folders...
+:: v2.7.0: Explicitly disable ShowFrequent to stop Navigation Pane/Home population
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" /t REG_DWORD /d "0" /f >nul
-if "%OS_TYPE%"=="win10" (
-    reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul
-)
-echo [+] Recent Folders Disabled!
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowFrequent" /t REG_DWORD /d "0" /f >nul
+:: Disable Start Menu recent docs tracking
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul
+echo [+] Recent & Frequent Folders Disabled!
 echo [%date% %time%] [%EXEC_MODE%] Disabled Recent >> "%LOG_FILE%"
 call :CheckExplorerStatus
 timeout /t 1 /nobreak >nul
@@ -334,9 +333,10 @@ reg delete "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Desktop\Name
 echo [ 7/9] Enable Compact View...
 if "%OS_TYPE%"=="win11" reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" /t REG_DWORD /d "1" /f >nul 2>&1
 
-echo [ 8/9] Disable Recent Folders...
+echo [ 8/9] Disable Recent & Frequent Folders...
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" /t REG_DWORD /d "0" /f >nul 2>&1
-if "%OS_TYPE%"=="win10" reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowFrequent" /t REG_DWORD /d "0" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul 2>&1
 
 echo [ 9/9] Classic Context Menu...
 if "%OS_TYPE%"=="win11" reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /ve /t REG_SZ /d "" /f >nul 2>&1
@@ -398,11 +398,10 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcon
 echo [ 7/9] Disable Compact View...
 if "%OS_TYPE%"=="win11" reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" /f >nul 2>&1
 
-echo [ 8/9] Enable Recent Folders...
+echo [ 8/9] Enable Recent & Frequent Folders...
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" /f >nul 2>&1
-if "%OS_TYPE%"=="win10" (
-    reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /f >nul 2>&1
-)
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowFrequent" /f >nul 2>&1
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /f >nul 2>&1
 
 echo [ 9/9] Restore Modern Context Menu...
 if "%OS_TYPE%"=="win11" reg delete "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" /f >nul 2>&1
@@ -429,7 +428,7 @@ goto menu
 :end
 cls
 echo.
-echo %blue%Explorer Config v2.6.0%reset%
+echo %blue%Explorer Config v2.7.0%reset%
 echo.
 echo Thank you for using.
 echo Log: %LOG_FILE%

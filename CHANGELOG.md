@@ -12,7 +12,7 @@ Components maintain independent versioning and are grouped under a coordinated p
 |------------------------|----------|----|--------------|
 | **SystemTweaker.bat**  | `v3.2.0` | ✅ Production | 2026-05-11   |
 | **BloatwareRemover.bat**| `v2.4.1` |  ✅ Production   | 2026-05-11   |
-| **ExplorerConfig.bat** | `v2.6.0` | 🧪 Beta Testing | 2026-05-12   |
+| **ExplorerConfig.bat** | `v2.7.0` | 🧪 Beta Testing | 2026-05-12   |
 
 ---
 
@@ -283,6 +283,13 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 📂 ExplorerConfig.bat
+### [v2.7.0] - 2026-05-12
+#### 🛠 Fixed
+- **[Win11] Tag Color**: Changed `[Win11]` tag color from Red to White in the menu UI to match user request.
+- **[8] Recent Folders Logic**: Updated `[8] Recent Folders` toggle to explicitly disable `ShowFrequent` in addition to `ShowRecent`. This prevents Windows from automatically populating the Navigation Pane and Home view with frequent folders (e.g., plugins, !soft), addressing the issue where unwanted user folders appeared in the list.
+- **Win11 Recent Tracking**: Ensured `Start_TrackDocs` is disabled for Windows 11 to fully stop recent document tracking across the system.
+
+
 ### [v2.6.0] - 2026-05-12
 #### 🛠 Fixed
 - **Status Not Updating After Batch Ops**: Resolved issue where menu status remained stale after `ApplyAll` [A] and `RestoreDefaults` [D]. Root cause was Explorer restart killing script context. Replaced with interactive system restart prompt (Y/N). If user selects N, script updates status from registry before returning to menu.
