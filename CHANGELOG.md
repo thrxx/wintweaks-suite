@@ -283,6 +283,15 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 📂 ExplorerConfig.bat
+### [v2.4.0] - 2026-05-11
+#### 🛠 Fixed
+- **Status Not Updating**: Resolved issue where menu status remained stale. Root cause was strict `find "0x1"` pattern in `:CheckExplorerStatus`. Reverted to `find "1"` (integrated from stable v1.11) which robustly handles both hex and decimal registry output formats.
+- **Desktop Bin Not Restoring**: Fixed issue where Recycle Bin did not return after `RestoreDefaults` [D]. Changed from `reg delete` to explicit `reg add ... /d "0"` to force visibility, ensuring the icon reappears immediately.
+
+#### 🔄 Changed
+- **Status Parsing**: Unified status check patterns to use substring matching (`find "1"`, `find "0"`) for maximum compatibility across different Windows language packs and registry configurations.
+- **Restore Logic**: Strengthened `RestoreExplorerDefaults` to use explicit positive values (e.g., `0` for visible) rather than relying on key deletion, which can be affected by Group Policy overrides.
+
 ### [v2.3.0] - 2026-05-11
 #### 🛠 Fixed
 - **Menu Status Not Updating**: Resolved persistent issue where status variables failed to refresh after `ApplyAll`/`RestoreDefaults`. Root cause was implicit `setlocal` scope retention and lack of variable resets. Removed all `setlocal`/`endlocal` from `:CheckExplorerStatus`, added explicit `set "var="` before each registry query, and inserted `timeout /t 1` after Explorer restart to allow UI cache propagation.
