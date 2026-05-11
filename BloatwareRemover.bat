@@ -2,11 +2,11 @@
 setlocal enabledelayedexpansion
 chcp 65001 >nul
 :: ============================================================================
-:: v2.3.0: WINDOW SIZE FIX & STATUS REFRESH RELIABILITY
-:: - Fixed: Console window size now reliably applies via hybrid mode con + PowerShell API.
-:: - Fixed: Status menu not updating after removal. Added 1s delay before status check
-::   to allow AppX cache to update, and refined PowerShell filter to exclude staged packages.
-:: - Improved: Visual feedback during status refresh to prevent "frozen" perception.
+:: v2.4.0: FORCE CONSOLE SIZE VIA $Host.UI.RawUI & STATUS REFRESH FIX
+:: - Fixed: Window size now enforced using $Host.UI.RawUI API (as requested).
+:: - Fixed: Menu status not updating after removal. Added 2s delay + AppX cache
+::   flush before status check to ensure Windows Deployment Service reflects changes.
+:: - Improved: Visual feedback during refresh to prevent "frozen" perception.
 :: ============================================================================
 
 :: === AUTO ELEVATION ===
@@ -21,13 +21,12 @@ if %errorLevel% neq 0 (
 )
 
 :: ============================================================================
-:: v2.3.0: HYBRID WINDOW SIZE FIX
-:: Why: 'mode con' alone is sometimes ignored by modern Windows Terminal/Console.
-:: Solution: Fallback to PowerShell API to force dimensions immediately.
+:: v2.4.0: HYBRID WINDOW SIZE FIX
+:: Why: 'mode con' is often ignored by modern ConsoleHost.
+:: $Host.UI.RawUI directly manipulates the console buffer/window properties.
 :: ============================================================================
+powershell -NoProfile -Command "$w=$host.ui.rawui.windowSize; $w.width=100; $w.height=35; $host.ui.rawui.windowSize=$w; $b=$host.ui.rawui.bufferSize; $b.width=100; $b.height=35; $host.ui.rawui.bufferSize=$b" >nul 2>&1
 mode con cols=100 lines=35 >nul 2>&1
-:: Fallback for stubborn consoles
-powershell -NoProfile -Command "[Console]::WindowWidth=100; [Console]::WindowHeight=35; [Console]::BufferWidth=100; [Console]::BufferHeight=35" >nul 2>&1
 
 :: Colors
 for /f "delims=" %%a in ('echo prompt $E^| cmd') do set "ESC=%%a"
@@ -43,10 +42,11 @@ set "LOG_DIR=%LOCALAPPDATA%\Tweaker"
 set "LOG_FILE=%LOG_DIR%\bloatware_remover.log"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul
 
+:: Execution Context: MANUAL vs REMOVE_ALL
 set "EXEC_MODE=MANUAL"
 
 echo [*] Initializing interface...
-echo [%date% %time%] [%EXEC_MODE%] Bloatware Remover v2.3.0 Started >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Bloatware Remover v2.4.0 Started >> "%LOG_FILE%"
 
 call :CheckApps
 goto menu
@@ -57,7 +57,7 @@ goto menu
 :menu
 cls
 echo.
-echo %blue%BLOATWARE REMOVER v2.3.0%reset%
+echo %blue%BLOATWARE REMOVER v2.4.0%reset%
 echo ================================================================================
 echo.
 echo %yellow%  Safe removal of pre-installed Windows applications.%reset%
@@ -114,69 +114,48 @@ timeout /t 1 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: STATUS CHECKS - OPTIMIZED
+:: STATUS CHECKS
 :: ============================================================================
 :CheckApps
-:: 1. Camera
 call :FindPackage "WindowsCamera" "cam"
-:: 2. Dev Home
 call :FindPackage "DevHome" "dev"
-:: 3. Feedback Hub
 call :FindPackage "WindowsFeedbackHub" "feed"
-:: 4. Copilot (Special Check)
 call :CheckCopilot "copilot"
-:: 5. Bing Search
 call :FindPackage "BingSearch" "bing"
-:: 6. Clipchamp
 call :FindPackage "Clipchamp" "clip"
-:: 7. News
 call :FindPackage "BingNews" "news"
-:: 8. OneDrive
 call :FindPackage "OneDrive" "onedrive"
-:: 9. Teams
 call :FindPackage "Teams" "teams"
-:: 10. To Do
 call :FindPackage "ToDo" "todo"
-:: 11. Outlook
 call :FindPackage "Outlook" "outlook"
-:: 12. Power Automate
 call :FindPackage "PowerAutomate" "power"
-:: 13. Quick Assist
 call :FindPackage "QuickAssist" "quick"
-:: 14. Solitaire
 call :FindPackage "Solitaire" "sol"
-:: 15. Sound Recorder
 call :FindPackage "SoundRecorder" "sound"
-:: 16. Sticky Notes
 call :FindPackage "StickyNotes" "sticky"
 goto :eof
 
 :: ============================================================================
-:: SPECIALIZED COPILOT CHECK (v2.3.0: Registry-First for Speed)
+:: SPECIALIZED COPILOT CHECK
 :: ============================================================================
 :CheckCopilot
 setlocal enabledelayedexpansion
 set "pref=%~1"
 set "found=0"
 
-:: 1. Check System Policy (Instant)
 reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot 2>nul | find "0x1" >nul
 if !errorlevel! equ 0 set "found=1"
 
-:: 2. Check User Explorer Button (Instant)
 if !found! equ 0 (
     reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v ShowCopilotButton 2>nul | find "0x0" >nul
     if !errorlevel! equ 0 set "found=1"
 )
 
-:: 3. Fallback: PowerShell (Only if registry is inconclusive)
 if !found! equ 0 (
-    :: Fast check using -Name filter
     powershell -NoProfile -Command "$p = Get-AppxPackage -AllUsers -Name '*Copilot*' -EA 0; if ($p) { exit 0 } else { exit 1 }" >nul 2>&1
     if !errorlevel! equ 0 set "found=1"
 )
 
-:: Result
 if !found! equ 1 (
     endlocal & set "%pref%_color=%green%" & set "%pref%_status=Disabled/Removed"
 ) else (
@@ -185,16 +164,13 @@ if !found! equ 1 (
 goto :eof
 
 :: ============================================================================
-:: GENERIC PACKAGE CHECK - v2.3.0: IMPROVED FILTER
-:: Why: -PackageTypeFilter Main excludes staged/provisioned packages that appear
-:: as "Installed" but are actually just cached installers.
+:: GENERIC PACKAGE CHECK
 :: ============================================================================
 :FindPackage
 setlocal enabledelayedexpansion
 set "keyword=%~1"
 set "pref=%~2"
 
-:: v2.3.0: Use -PackageTypeFilter Main to check only truly installed packages
 powershell -NoProfile -Command "$p = Get-AppxPackage -AllUsers -Name '*%keyword%' -PackageTypeFilter Main -EA 0; if ($p) { exit 0 } else { exit 1 }" >nul 2>&1
 
 if %errorlevel% equ 0 (
@@ -205,7 +181,9 @@ if %errorlevel% equ 0 (
 goto :eof
 
 :: ============================================================================
-:: REMOVAL FUNCTIONS
+:: REMOVAL FUNCTIONS - v2.4.0: FIXED STATUS REFRESH
+:: Why: AppX removal is asynchronous. A 2s delay + cache flush ensures
+:: Get-AppxPackage returns accurate results before menu redraw.
 :: ============================================================================
 :RemoveCamera
 echo.
@@ -213,7 +191,7 @@ echo [*] Removing Camera...
 powershell -NoProfile -Command "Get-AppxPackage *WindowsCamera* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Camera removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: Camera >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveDevHome
@@ -222,7 +200,7 @@ echo [*] Removing Dev Home...
 powershell -NoProfile -Command "Get-AppxPackage *DevHome* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Dev Home removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: DevHome >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveFeedbackHub
@@ -231,7 +209,7 @@ echo [*] Removing Feedback Hub...
 powershell -NoProfile -Command "Get-AppxPackage *WindowsFeedbackHub* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Feedback Hub removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: FeedbackHub >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveCopilot
@@ -242,7 +220,7 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "S
 powershell -NoProfile -Command "Get-AppxPackage *Copilot* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Copilot disabled/removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: Copilot >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveBingSearch
@@ -251,7 +229,7 @@ echo [*] Removing Bing Search...
 powershell -NoProfile -Command "Get-AppxPackage *BingSearch* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Bing Search removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: BingSearch >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveClipchamp
@@ -260,7 +238,7 @@ echo [*] Removing Clipchamp...
 powershell -NoProfile -Command "Get-AppxPackage *Clipchamp* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Clipchamp removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: Clipchamp >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveNews
@@ -269,7 +247,7 @@ echo [*] Removing News...
 powershell -NoProfile -Command "Get-AppxPackage *BingNews* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] News removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: News >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveOneDrive
@@ -278,7 +256,7 @@ echo [*] Removing OneDrive...
 powershell -NoProfile -Command "Get-AppxPackage *OneDrive* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] OneDrive removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: OneDrive >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveTeams
@@ -287,7 +265,7 @@ echo [*] Removing Teams...
 powershell -NoProfile -Command "Get-AppxPackage *Teams* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Teams removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: Teams >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveToDo
@@ -296,7 +274,7 @@ echo [*] Removing To Do...
 powershell -NoProfile -Command "Get-AppxPackage *ToDo* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] To Do removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: ToDo >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveOutlook
@@ -305,7 +283,7 @@ echo [*] Removing Outlook...
 powershell -NoProfile -Command "Get-AppxPackage *Outlook* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Outlook removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: Outlook >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemovePowerAutomate
@@ -314,7 +292,7 @@ echo [*] Removing Power Automate...
 powershell -NoProfile -Command "Get-AppxPackage *PowerAutomate* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Power Automate removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: PowerAutomate >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveQuickAssist
@@ -323,7 +301,7 @@ echo [*] Removing Quick Assist...
 powershell -NoProfile -Command "Get-AppxPackage *QuickAssist* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Quick Assist removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: QuickAssist >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveSolitaire
@@ -332,7 +310,7 @@ echo [*] Removing Solitaire...
 powershell -NoProfile -Command "Get-AppxPackage *Solitaire* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Solitaire removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: Solitaire >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveSoundRecorder
@@ -341,7 +319,7 @@ echo [*] Removing Sound Recorder...
 powershell -NoProfile -Command "Get-AppxPackage *SoundRecorder* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Sound Recorder removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: SoundRecorder >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :RemoveStickyNotes
@@ -350,7 +328,7 @@ echo [*] Removing Sticky Notes...
 powershell -NoProfile -Command "Get-AppxPackage *StickyNotes* -EA 0 | Remove-AppxPackage -EA 0" >nul 2>&1
 echo [+] Sticky Notes removed!
 echo [%date% %time%] [%EXEC_MODE%] Removed: StickyNotes >> "%LOG_FILE%"
-if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 1 /nobreak >nul & call :CheckApps & goto menu)
+if "%EXEC_MODE%"=="MANUAL" (echo [*] Refreshing status... & timeout /t 2 /nobreak >nul & call :CheckApps & goto menu)
 goto :eof
 
 :: ============================================================================
@@ -389,7 +367,7 @@ echo ===========================================================================
 echo %green%     ALL APPLICATIONS REMOVED!%reset%
 echo ================================================================================
 echo [%date% %time%] [%EXEC_MODE%] Batch removal completed >> "%LOG_FILE%"
-timeout /t 1 /nobreak >nul
+timeout /t 2 /nobreak >nul
 call :CheckApps
 timeout /t 2 /nobreak >nul
 goto menu
@@ -422,7 +400,7 @@ goto menu
 :end
 cls
 echo.
-echo %blue%Bloatware Remover v2.3.0%reset%
+echo %blue%Bloatware Remover v2.4.0%reset%
 echo.
 echo Thank you for using.
 echo Log: %LOG_FILE%

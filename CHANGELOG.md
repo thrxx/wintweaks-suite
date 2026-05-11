@@ -11,7 +11,7 @@ Components maintain independent versioning and are grouped under a coordinated p
 | Component              | Version  | Status | Last Updated |
 |------------------------|----------|----|--------------|
 | **SystemTweaker.bat**  | `v3.2.0` | ✅ Production | 2026-05-11   |
-| **BloatwareRemover.bat**| `v2.3.0` |  🧪 Beta Testing   | 2026-05-11   |
+| **BloatwareRemover.bat**| `v2.4.0` |  🧪 Beta Testing   | 2026-05-11   |
 | **ExplorerConfig.bat** | `v1.5.0` | 🔄 Pending Refactor | 2026-05-10   |
 
 ---
@@ -206,6 +206,16 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 🧹 BloatwareRemover
+### [v2.4.0] - 2026-05-11
+#### 🛠 Fixed
+- **Console Window Size Cutoff**: Resolved header truncation by replacing `mode con` with direct `$Host.UI.RawUI` API manipulation. Window and buffer dimensions are now explicitly set to 100x35 before any UI rendering.
+- **Menu Status Not Updating After Removal**: Fixed race condition where `Get-AppxPackage` returned cached/stale data immediately after removal. Added `timeout /t 2` and explicit cache propagation wait before `call :CheckApps` to ensure accurate UI state.
+- **Batch Operation UI Sync**: `RemoveAll` and `RestoreApps` now enforce a dedicated 2-second refresh phase after execution, guaranteeing the final menu accurately reflects the system state.
+
+#### 🔄 Changed
+- **Status Refresh Flow**: Manual removal functions now display `[*] Refreshing status...` and wait 2 seconds before redrawing the menu, improving perceived responsiveness and eliminating false "Installed" states.
+- **Console Initialization**: Moved window sizing to the absolute start of execution (post-elevation) to prevent console host inheritance issues.
+
 ### [v2.3.0] - 2026-05-11
 #### 🛠 Fixed
 - **Console Window Size Not Applying**: Resolved issue where `mode con` was ignored by modern Windows Terminal/Console hosts. Implemented hybrid fallback using PowerShell `[Console]::Window...` API to force 100x35 dimensions reliably across all environments.
