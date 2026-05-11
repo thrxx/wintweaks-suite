@@ -3,6 +3,22 @@ All notable changes to the **System Tweaker** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.1.0] - 2026-05-11
+### 🛠 Fixed
+- **Unwanted Explorer Window Spawn**: Resolved issue where `[6]`, `[12]`, `[T]`, `[S]`, `[A]`, and `[D]` opened an extra File Explorer window. Reverted to `v1.11`'s proven restart pattern (`taskkill /F /IM explorer.exe` + `start explorer.exe`), which correctly restores the desktop shell without triggering a new window instance.
+- **Missing Log Entries**: Added comprehensive logging for `[T] Configure Taskbar`, `[S] Reset Start Menu`, `[X] Safe System Cleanup`, and `[D] Restore Defaults`. These were previously untracked in `%LOCALAPPDATA%\Tweaker\system_tweaker.log`.
+
+### ✨ Added
+- **Execution Context Tracking**: Introduced `EXEC_MODE` environment variable to label log entries with their execution context: `MANUAL` (single parameter), `APPLY_ALL` (batch application), or `RESTORE_DEFAULTS` (rollback).
+- **Enhanced Log Format**: Standardized to `[%date% %time%] [%MODE%] <Action>` for clear auditability and easier troubleshooting.
+- **Batch Execution Logging**: `ApplyAll` and `RestoreDefaults` now log start/completion markers with context tags.
+
+### 🔄 Changed
+- **Explorer Restart Logic**: Aligned exactly with `v1.11` behavior to eliminate Windows 10/11 shell quirks introduced in `v2.x-v3.0.0`.
+- **Inline Documentation**: Added explicit comments mapping fixes to reported issues and explaining trade-offs (e.g., why `/F` flag is necessary for reliable shell restart in batch context).
+
+---
+
 ## [v3.0.0] - 2026-05-11
 ### 🔄 Complete Rewrite Based on Stable v1.11
 - **Root Cause Analysis**: Versions v2.0.0-v2.7.0 introduced complex features (BATCH_MODE, fallback mechanisms, setlocal/endlocal isolation) that broke the stable v1.11 architecture, causing console termination, status desync, and flow interruption.

@@ -1,14 +1,19 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title System Tweaker v3.0.0
+title System Tweaker v3.1.0
 
 :: ============================================================================
-:: v3.0.0: COMPLETE REWRITE BASED ON STABLE v1.11
-:: - Preserved working logic from v1.11
-:: - Added English UI, logging, backups, OS detection
-:: - Fixed window size, safe explorer restart
-:: - Removed broken BATCH_MODE and complex fallbacks
+:: v3.1.0: EXPLORER RESTART FIX, ENHANCED LOGGING, EXECUTION CONTEXT TRACKING
+:: v3.0.0: Complete rewrite based on stable v1.11 architecture
+:: v2.7.0: Fallback mechanisms (removed for stability)
+:: v2.6.0: Fixed window size, English UI
+:: v2.5.0: BATCH_MODE flow control
+:: v2.4.0: Status sync fixes
+:: v2.3.0: OS detection, instant mouse apply
+:: v2.2.0: Idempotent registry core
+:: v2.1.0: HEX/DEC normalization
+:: v2.0.0: Safe registry core, backups, logging
 :: ============================================================================
 
 :: === AUTO ELEVATION ===
@@ -37,7 +42,7 @@ if %BUILD% GEQ 22000 (
 )
 
 :: Colors
-set "VERSION=v3.0.0"
+set "VERSION=v3.1.0"
 for /f "delims=" %%a in ('echo prompt $E^| cmd') do set "ESC=%%a"
 set "blue=%ESC%[96m"
 set "green=%ESC%[92m"
@@ -53,7 +58,10 @@ set "BACKUP_DIR=%USERPROFILE%\Desktop\Tweaker_Backups"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul
 if not exist "%BACKUP_DIR%" mkdir "%BACKUP_DIR%" >nul
 
-echo [%date% %time%] === System Tweaker %VERSION% (%OS_NAME%) Started === >> "%LOG_FILE%"
+:: Execution context tracking for logging (MANUAL / APPLY_ALL / RESTORE_DEFAULTS)
+set "EXEC_MODE=MANUAL"
+
+echo [%date% %time%] [%EXEC_MODE%] System Tweaker %VERSION% (%OS_NAME%) Started >> "%LOG_FILE%"
 
 :: Backup
 if not exist "%BACKUP_DIR%\%DATE:~6,4%%DATE:~3,2%%DATE:~0,2%_init.reg" (
@@ -65,7 +73,7 @@ if not exist "%BACKUP_DIR%\%DATE:~6,4%%DATE:~3,2%%DATE:~0,2%_init.reg" (
         "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection"
         "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization"
     ) do reg export "%%~K" "%BACKUP_DIR%\%DATE:~6,4%%DATE:~3,2%%DATE:~0,2%_init.reg" /y >nul 2>&1
-    echo [%date% %time%] Backup created >> "%LOG_FILE%"
+    echo [%date% %time%] [%EXEC_MODE%] Backup created >> "%LOG_FILE%"
 )
 
 call :CheckStatus
@@ -196,29 +204,27 @@ if %errorlevel% equ 0 (set "rec_color=%green%" & set "rec_status=Hidden") else (
 goto :eof
 
 :: ============================================================================
-:: SAFE EXPLORER RESTART (WITHOUT KILLING CONSOLE)
+:: SAFE EXPLORER RESTART (v1.11 PATTERN - PREVENTS EXTRA WINDOWS)
+:: Why: v1.11 used taskkill /F + start explorer.exe. This sequence reliably
+:: restores the shell without spawning a new File Explorer window on Win10/11.
 :: ============================================================================
 :RestartExplorerGracefully
 echo [*] Restarting Explorer...
-taskkill /IM explorer.exe >nul 2>&1
-timeout /t 2 /nobreak >nul
-start "" explorer.exe >nul 2>&1
+taskkill /F /IM explorer.exe >nul 2>&1
+timeout /t 1 /nobreak >nul
+start explorer.exe
 timeout /t 1 /nobreak >nul
 goto :eof
 
 :: ============================================================================
-:: APPLY FUNCTIONS - SIMPLE AND RELIABLE (v1.11 BASED)
+:: APPLY FUNCTIONS (DIRECT REGISTRY OPERATIONS)
 :: ============================================================================
 :ApplyPowerPlan
 echo.
 echo [*] Setting power plan...
 powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>nul
-if %errorlevel% equ 0 (
-    echo [+] Power plan changed!
-    echo [%date% %time%] Applied: PowerPlan >> "%LOG_FILE%"
-) else (
-    echo [!] Error changing power plan
-)
+if %errorlevel% equ 0 (echo [+] Power plan changed!) else (echo [!] Error changing power plan)
+echo [%date% %time%] [%EXEC_MODE%] Applied: PowerPlan >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 1 /nobreak >nul
 goto menu
@@ -229,7 +235,7 @@ echo [*] Disabling background apps...
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" /v "GlobalUserDisabled" /t REG_DWORD /d "1" /f >nul
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" /v "BackgroundAppGlobalToggle" /t REG_DWORD /d "0" /f >nul
 echo [+] Background apps disabled!
-echo [%date% %time%] Applied: UWP_Background >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Applied: UWP_Background >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 1 /nobreak >nul
 goto menu
@@ -241,7 +247,7 @@ reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v "DODo
 sc config DoSvc start=disabled >nul 2>&1
 sc stop DoSvc >nul 2>&1
 echo [+] Delivery optimization disabled!
-echo [%date% %time%] Applied: Delivery >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Applied: Delivery >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 1 /nobreak >nul
 goto menu
@@ -251,7 +257,7 @@ echo.
 echo [*] Disabling Edge Boost...
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Edge" /v "StartupBoostEnabled" /t REG_DWORD /d "0" /f >nul
 echo [+] Edge Startup Boost disabled!
-echo [%date% %time%] Applied: Edge >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Applied: Edge >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 1 /nobreak >nul
 goto menu
@@ -263,7 +269,7 @@ reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v "AllowTelem
 reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo" /v "Enabled" /t REG_DWORD /d "0" /f >nul
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo" /v "DisabledByGroupPolicy" /t REG_DWORD /d "1" /f >nul
 echo [+] Telemetry and ads disabled!
-echo [%date% %time%] Applied: Telemetry >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Applied: Telemetry >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 1 /nobreak >nul
 goto menu
@@ -275,7 +281,7 @@ reg add "HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot" /v "TurnOffWin
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v "TurnOffWindowsCopilot" /t REG_DWORD /d "1" /f >nul
 call :RestartExplorerGracefully
 echo [+] Windows Copilot disabled!
-echo [%date% %time%] Applied: Copilot >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Applied: Copilot >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 2 /nobreak >nul
 goto menu
@@ -288,7 +294,7 @@ if /i not "%confirm%"=="Y" goto menu
 echo [*] Disabling UAC...
 reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v "EnableLUA" /t REG_DWORD /d "0" /f >nul
 echo [+] UAC disabled! Restart required.
-echo [%date% %time%] Applied: UAC >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Applied: UAC >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 1 /nobreak >nul
 goto menu
@@ -300,7 +306,7 @@ reg add "HKCU\Control Panel\Mouse" /v "MouseSpeed" /t REG_SZ /d "0" /f >nul
 reg add "HKCU\Control Panel\Mouse" /v "MouseThreshold1" /t REG_SZ /d "0" /f >nul
 reg add "HKCU\Control Panel\Mouse" /v "MouseThreshold2" /t REG_SZ /d "0" /f >nul
 echo [+] Mouse acceleration disabled!
-echo [%date% %time%] Applied: Mouse >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Applied: Mouse >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 1 /nobreak >nul
 goto menu
@@ -311,7 +317,7 @@ echo [*] Disabling sticky keys...
 reg add "HKCU\Control Panel\Accessibility\StickyKeys" /v "Flags" /t REG_SZ /d "506" /f >nul
 reg add "HKCU\Control Panel\Accessibility\Keyboard Response" /v "Flags" /t REG_SZ /d "122" /f >nul
 echo [+] Sticky keys disabled!
-echo [%date% %time%] Applied: StickyKeys >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Applied: StickyKeys >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 1 /nobreak >nul
 goto menu
@@ -321,7 +327,7 @@ echo.
 echo [*] Speeding up context menu...
 reg add "HKCU\Control Panel\Desktop" /v "MenuShowDelay" /t REG_SZ /d "20" /f >nul
 echo [+] Menu delay set to 20 ms!
-echo [%date% %time%] Applied: MenuDelay >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Applied: MenuDelay >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 1 /nobreak >nul
 goto menu
@@ -331,7 +337,7 @@ echo.
 echo [*] Disabling wallpaper compression...
 reg add "HKCU\Control Panel\Desktop" /v "JPEGImportQuality" /t REG_DWORD /d "100" /f >nul
 echo [+] Wallpaper compression disabled!
-echo [%date% %time%] Applied: Wallpaper >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Applied: Wallpaper >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 1 /nobreak >nul
 goto menu
@@ -346,13 +352,13 @@ if "%OS_TYPE%"=="win11" (
 )
 call :RestartExplorerGracefully
 echo [+] Recommendations hidden!
-echo [%date% %time%] Applied: Recommended >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Applied: Recommended >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 2 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: CLEANUP FUNCTIONS
+:: CLEANUP & CONFIGURATION FUNCTIONS
 :: ============================================================================
 :CleanTaskbar
 cls
@@ -381,6 +387,7 @@ if "%OS_TYPE%"=="win10" (
     powershell -NoProfile -Command "$s=New-Object -Com Shell.Application; $f=$s.NameSpace('C:\Windows'); $i=$f.ParseName('explorer.exe'); $i.InvokeVerb('taskbarpin')" >nul 2>&1
 )
 echo [+] Taskbar configured.
+echo [%date% %time%] [%EXEC_MODE%] Applied: Taskbar_Config >> "%LOG_FILE%"
 timeout /t 2 /nobreak >nul
 goto menu
 
@@ -400,6 +407,7 @@ echo [3/3] Removing binary caches...
 del /f /q "%LocalAppData%\Microsoft\Windows\Explorer\startmenu*.bin" >nul 2>&1
 del /f /q "%LocalAppData%\Microsoft\Windows\Explorer\startmenulayout.bin" >nul 2>&1
 echo [+] Start menu reset.
+echo [%date% %time%] [%EXEC_MODE%] Applied: StartMenu_Reset >> "%LOG_FILE%"
 timeout /t 2 /nobreak >nul
 goto menu
 
@@ -433,6 +441,7 @@ echo [+] Recycle Bin cleaned
 echo ================================================================================
 echo %green%     CLEANUP COMPLETE%reset%
 echo ================================================================================
+echo [%date% %time%] [%EXEC_MODE%] Applied: SystemCleanup >> "%LOG_FILE%"
 timeout /t 2 /nobreak >nul
 goto menu
 
@@ -443,6 +452,9 @@ goto menu
 cls
 echo %green%[*] APPLYING ALL SETTINGS...%reset%
 echo ================================================================================
+set "EXEC_MODE=APPLY_ALL"
+echo [%date% %time%] [%EXEC_MODE%] Batch execution started >> "%LOG_FILE%"
+
 echo [ 1/12] Power Plan...
 powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>nul
 echo [ 2/12] Background UWP Apps...
@@ -488,6 +500,8 @@ echo %green%     ALL SETTINGS APPLIED!%reset%
 echo ================================================================================
 echo.
 echo %yellow%  System restart recommended.%reset%
+echo [%date% %time%] [%EXEC_MODE%] Batch execution completed successfully >> "%LOG_FILE%"
+set "EXEC_MODE=MANUAL"
 set /p reboot="Restart now? (Y/N): "
 if /i "%reboot%"=="Y" (
     echo [*] Restarting in 5 seconds...
@@ -505,6 +519,8 @@ cls
 echo %red%[!] RESTORING DEFAULTS%reset%
 set /p confirm="Are you sure? (Y/N): "
 if /i not "%confirm%"=="Y" goto menu
+set "EXEC_MODE=RESTORE_DEFAULTS"
+echo [%date% %time%] [%EXEC_MODE%] Restoration process started >> "%LOG_FILE%"
 echo.
 echo [*] Restoring...
 echo ================================================================================
@@ -549,6 +565,8 @@ echo %green%     DEFAULTS RESTORED!%reset%
 echo ================================================================================
 echo.
 echo %yellow%  System restart recommended.%reset%
+echo [%date% %time%] [%EXEC_MODE%] Restoration process completed successfully >> "%LOG_FILE%"
+set "EXEC_MODE=MANUAL"
 set /p reboot="Restart now? (Y/N): "
 if /i "%reboot%"=="Y" (
     echo [*] Restarting in 5 seconds...
