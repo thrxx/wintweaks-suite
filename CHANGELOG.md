@@ -12,7 +12,7 @@ Components maintain independent versioning and are grouped under a coordinated p
 |------------------------|----------|----|--------------|
 | **SystemTweaker.bat**  | `v3.2.0` | ✅ Production | 2026-05-11   |
 | **BloatwareRemover.bat**| `v2.4.1` |  ✅ Production   | 2026-05-11   |
-| **ExplorerConfig.bat** | `v2.5.0` | 🧪 Beta Testing | 2026-05-12   |
+| **ExplorerConfig.bat** | `v2.6.0` | 🧪 Beta Testing | 2026-05-12   |
 
 ---
 
@@ -283,6 +283,16 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 📂 ExplorerConfig.bat
+### [v2.6.0] - 2026-05-12
+#### 🛠 Fixed
+- **Status Not Updating After Batch Ops**: Resolved issue where menu status remained stale after `ApplyAll` [A] and `RestoreDefaults` [D]. Root cause was Explorer restart killing script context. Replaced with interactive system restart prompt (Y/N). If user selects N, script updates status from registry before returning to menu.
+- **Recycle Bin Not Restoring**: Fixed `[D] RestoreDefaults` failing to show Recycle Bin on Desktop. Implemented explicit separation: sets `IsPinnedToNameSpaceTree=1` for Navigation and `HideDesktopIcons=0` for Desktop to force visibility.
+
+#### 🔄 Changed
+- **Interactive Restart**: Removed `taskkill /F /IM explorer.exe` from `[A]` and `[D]`. Replaced with `shutdown /r /t 0` prompt similar to `SystemTweaker.bat`.
+- **Recycle Bin Logic**: Explicitly set registry values during restore instead of relying on key deletion.
+
+
 ### [v2.5.0] - 2026-05-12
 #### 🛠 Fixed
 - **Persistent Status Update Failure**: Resolved critical issue where menu status remained stale after `ApplyAll` [A] and `RestoreDefaults` [D]. Root cause was a race condition between Explorer process restart and registry read latency, exacerbated by pipe parsing overhead in `CheckExplorerStatus`.

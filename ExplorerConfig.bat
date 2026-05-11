@@ -1,15 +1,19 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title Explorer Config v2.5.0
+title Explorer Config v2.6.0
 
 :: ============================================================================
-:: v2.5.0: CRITICAL FIX - DIRECT STATUS INJECTION (NO RACE CONDITION)
-:: - Fixed: Menu status not updating after batch operations.
-::   Root Cause: Race condition between Explorer restart and registry read latency.
-::   Solution: Removed :CheckExplorerStatus from ApplyAll/Restore. Instead,
-::   we now "inject" the known final state directly into variables, ensuring
-::   instant and 100% accurate UI updates.
+:: v2.6.0: INTERACTIVE SYSTEM RESTART & RECYCLE BIN FIX
+:: - Fixed: Status not updating after ApplyAll/Restore.
+::   Solution: Removed internal Explorer restart logic which was causing race
+::   conditions. Implemented interactive system restart prompt (Y/N). If the
+::   user chooses N, the script reads the registry directly to update the menu
+::   status, ensuring immediate feedback without killing the script context.
+:: - Fixed: Recycle Bin not returning on [D] Restore.
+::   Solution: Separated logic for Navigation vs Desktop. Explicitly sets
+::   System.IsPinnedToNameSpaceTree=1 (for Navigation) and HideDesktopIcons=0
+::   (for Desktop) to guarantee visibility.
 :: ============================================================================
 
 :: === AUTO ELEVATION ===
@@ -54,9 +58,8 @@ if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul
 
 set "EXEC_MODE=MANUAL"
 
-echo [%date% %time%] [%EXEC_MODE%] Explorer Config v2.5.0 Started >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Explorer Config v2.6.0 Started >> "%LOG_FILE%"
 
-:: Initial status check for first run
 call :CheckExplorerStatus
 goto menu
 
@@ -66,11 +69,11 @@ goto menu
 :menu
 cls
 echo.
-echo %blue%EXPLORER CONFIG v2.5.0%reset%
+echo %blue%EXPLORER CONFIG v2.6.0%reset%
 echo ================================================================================
 echo.
 echo %yellow%  %OS_NAME% (Build %BUILD%)%reset%
-echo %yellow%  Restarting Explorer is required for some changes.%reset%
+echo %yellow%  Restarting system is required for some changes.%reset%
 echo.
 echo %white%[1]%reset%  Open Explorer to              : %open_color%%open_status%%reset%
 echo %white%[2]%reset%  "Home" Button                 : %home_color%%home_status%%reset%  %red%[Win11]%reset%
@@ -112,18 +115,18 @@ timeout /t 1 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: STATUS CHECK (For manual toggles only)
+:: STATUS CHECK
 :: ============================================================================
 :CheckExplorerStatus
-:: 1. Open Explorer (1 = This PC)
+:: 1. Open Explorer (LaunchTo: 1=PC, 2=QuickAccess)
 set "open_color=" & set "open_status="
-reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "LaunchTo" 2>nul | find "1" >nul
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "LaunchTo" 2>nul | find "0x1" >nul
 if %errorlevel% equ 0 (set "open_color=%green%" & set "open_status=This PC") else (set "open_color=%red%" & set "open_status=Home/Quick Access")
 
 :: 2. Home Button (Win11)
 set "home_color=" & set "home_status="
 if "%OS_TYPE%"=="win11" (
-    reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{f874310e-b6b7-47dc-bc84-b9e6b38f5903}" 2>nul | find "1" >nul
+    reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{f874310e-b6b7-47dc-bc84-b9e6b38f5903}" 2>nul | find "0x1" >nul
     if %errorlevel% equ 0 (set "home_color=%green%" & set "home_status=Hidden") else (set "home_color=%red%" & set "home_status=Visible")
 ) else (
     set "home_color=%yellow%" & set "home_status=N/A"
@@ -132,7 +135,7 @@ if "%OS_TYPE%"=="win11" (
 :: 3. Gallery Button (Win11)
 set "gallery_color=" & set "gallery_status="
 if "%OS_TYPE%"=="win11" (
-    reg query "HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "0" >nul
+    reg query "HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "0x0" >nul
     if %errorlevel% equ 0 (set "gallery_color=%green%" & set "gallery_status=Hidden") else (set "gallery_color=%red%" & set "gallery_status=Visible")
 ) else (
     set "gallery_color=%yellow%" & set "gallery_status=N/A"
@@ -140,23 +143,23 @@ if "%OS_TYPE%"=="win11" (
 
 :: 4. Network Button
 set "network_color=" & set "network_status="
-reg query "HKCU\Software\Classes\CLSID\{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "0" >nul
+reg query "HKCU\Software\Classes\CLSID\{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "0x0" >nul
 if %errorlevel% equ 0 (set "network_color=%green%" & set "network_status=Hidden") else (set "network_color=%red%" & set "network_status=Visible")
 
 :: 5. Recycle Bin in Navigation
 set "navbin_color=" & set "navbin_status="
-reg query "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "1" >nul
+reg query "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "0x1" >nul
 if %errorlevel% equ 0 (set "navbin_color=%green%" & set "navbin_status=Enabled") else (set "navbin_color=%red%" & set "navbin_status=Disabled")
 
 :: 6. Recycle Bin on Desktop
 set "desktopbin_color=" & set "desktopbin_status="
-reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" 2>nul | find "1" >nul
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" 2>nul | find "0x1" >nul
 if %errorlevel% equ 0 (set "desktopbin_color=%green%" & set "desktopbin_status=Hidden") else (set "desktopbin_color=%red%" & set "desktopbin_status=Visible")
 
 :: 7. Compact View (Win11)
 set "compact_color=" & set "compact_status="
 if "%OS_TYPE%"=="win11" (
-    reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" 2>nul | find "1" >nul
+    reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" 2>nul | find "0x1" >nul
     if %errorlevel% equ 0 (set "compact_color=%green%" & set "compact_status=Enabled") else (set "compact_color=%red%" & set "compact_status=Disabled")
 ) else (
     set "compact_color=%yellow%" & set "compact_status=N/A"
@@ -164,10 +167,10 @@ if "%OS_TYPE%"=="win11" (
 
 :: 8. Recent Folders
 set "recent_color=" & set "recent_status="
-reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" 2>nul | find "0" >nul
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer" /v "ShowRecent" 2>nul | find "0x0" >nul
 if %errorlevel% equ 0 (set "recent_color=%green%" & set "recent_status=Disabled") else (set "recent_color=%red%" & set "recent_status=Enabled")
 
-:: 9. Context Menu (Win11)
+:: 9. Context Menu (Win11 Classic)
 set "context_color=" & set "context_status="
 if "%OS_TYPE%"=="win11" (
     reg query "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" 2>nul | find /i "(Default)" >nul
@@ -299,7 +302,7 @@ timeout /t 2 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: APPLY ALL - v2.5.0: DIRECT STATUS INJECTION
+:: APPLY ALL - v2.6.0: INTERACTIVE SYSTEM RESTART
 :: ============================================================================
 :ApplyAllExplorer
 cls
@@ -338,23 +341,27 @@ if "%OS_TYPE%"=="win10" reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\
 echo [ 9/9] Classic Context Menu...
 if "%OS_TYPE%"=="win11" reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /ve /t REG_SZ /d "" /f >nul 2>&1
 
-call :RestartExplorer
-:: v2.5.0: DIRECT STATUS INJECTION (No registry read needed)
-echo [*] Updating status...
-timeout /t 1 /nobreak >nul
-call :SetStatusApplied
-
 echo.
 echo ================================================================================
 echo %green%     ALL SETTINGS APPLIED!%reset%
 echo ================================================================================
+echo.
+echo %yellow%  For changes to take effect, a restart is required.%reset%
+echo.
+set /p restart_system="Restart system now? (Y/N): "
+if /i "%restart_system%"=="Y" (
+    echo [*] Restarting in 5 seconds...
+    timeout /t 5 /nobreak >nul
+    shutdown /r /t 0
+)
+call :CheckExplorerStatus
 echo [%date% %time%] [%EXEC_MODE%] Batch execution completed >> "%LOG_FILE%"
 set "EXEC_MODE=MANUAL"
 timeout /t 2 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: RESTORE DEFAULTS - v2.5.0: DIRECT STATUS INJECTION
+:: RESTORE DEFAULTS - v2.6.0: FIX RECYCLE BIN & INTERACTIVE RESTART
 :: ============================================================================
 :RestoreExplorerDefaults
 cls
@@ -379,11 +386,13 @@ if "%OS_TYPE%"=="win11" reg delete "HKCU\Software\Classes\CLSID\{e88865ea-0e1c-4
 echo [ 4/9] Show "Network" Button...
 reg delete "HKCU\Software\Classes\CLSID\{F02C1A0D-BE21-4350-88B0-7367FC96EF3C}" /v "System.IsPinnedToNameSpaceTree" /f >nul 2>&1
 
-echo [ 5/9] Disable Recycle Bin in Navigation...
-reg delete "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" /f >nul 2>&1
+echo [ 5/9] Restore Recycle Bin in Navigation...
+:: Fix: Ensure pinned status is 1
+reg add "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" /t REG_DWORD /d "1" /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /f >nul 2>&1
 
-echo [ 6/9] Show Recycle Bin on Desktop...
+echo [ 6/9] Restore Recycle Bin on Desktop...
+:: Fix: Ensure visible by setting HideDesktopIcons=0
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "0" /f >nul 2>&1
 
 echo [ 7/9] Disable Compact View...
@@ -398,70 +407,29 @@ if "%OS_TYPE%"=="win10" (
 echo [ 9/9] Restore Modern Context Menu...
 if "%OS_TYPE%"=="win11" reg delete "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" /f >nul 2>&1
 
-call :RestartExplorer
-:: v2.5.0: DIRECT STATUS INJECTION (No registry read needed)
-echo [*] Updating status...
-timeout /t 1 /nobreak >nul
-call :SetStatusDefault
-
 echo.
 echo ================================================================================
 echo %green%     DEFAULTS RESTORED!%reset%
 echo ================================================================================
+echo.
+echo %yellow%  For changes to take effect, a restart is required.%reset%
+echo.
+set /p restart_system="Restart system now? (Y/N): "
+if /i "%restart_system%"=="Y" (
+    echo [*] Restarting in 5 seconds...
+    timeout /t 5 /nobreak >nul
+    shutdown /r /t 0
+)
+call :CheckExplorerStatus
 echo [%date% %time%] [%EXEC_MODE%] Restoration completed >> "%LOG_FILE%"
 set "EXEC_MODE=MANUAL"
 timeout /t 2 /nobreak >nul
 goto menu
 
-:: ============================================================================
-:: STATUS INJECTION HELPERS (v2.5.0)
-:: Why: Eliminates race conditions by setting variables directly instead of
-:: reading the registry immediately after a write.
-:: ============================================================================
-:SetStatusApplied
-:: Set all to "Applied" (Green) state
-set "open_color=%green%" & set "open_status=This PC"
-if "%OS_TYPE%"=="win11" (
-    set "home_color=%green%" & set "home_status=Hidden"
-    set "gallery_color=%green%" & set "gallery_status=Hidden"
-    set "compact_color=%green%" & set "compact_status=Enabled"
-    set "context_color=%green%" & set "context_status=Classic"
-) else (
-    set "home_color=%yellow%" & set "home_status=N/A"
-    set "gallery_color=%yellow%" & set "gallery_status=N/A"
-    set "compact_color=%yellow%" & set "compact_status=N/A"
-    set "context_color=%yellow%" & set "context_status=N/A"
-)
-set "network_color=%green%" & set "network_status=Hidden"
-set "navbin_color=%green%" & set "navbin_status=Enabled"
-set "desktopbin_color=%green%" & set "desktopbin_status=Hidden"
-set "recent_color=%green%" & set "recent_status=Disabled"
-goto :eof
-
-:SetStatusDefault
-:: Set all to "Default" (Red) state
-set "open_color=%red%" & set "open_status=Home/Quick Access"
-if "%OS_TYPE%"=="win11" (
-    set "home_color=%red%" & set "home_status=Visible"
-    set "gallery_color=%red%" & set "gallery_status=Visible"
-    set "compact_color=%red%" & set "compact_status=Disabled"
-    set "context_color=%red%" & set "context_status=Modern"
-) else (
-    set "home_color=%yellow%" & set "home_status=N/A"
-    set "gallery_color=%yellow%" & set "gallery_status=N/A"
-    set "compact_color=%yellow%" & set "compact_status=N/A"
-    set "context_color=%yellow%" & set "context_status=N/A"
-)
-set "network_color=%red%" & set "network_status=Visible"
-set "navbin_color=%red%" & set "navbin_status=Disabled"
-set "desktopbin_color=%red%" & set "desktopbin_status=Visible"
-set "recent_color=%red%" & set "recent_status=Enabled"
-goto :eof
-
 :end
 cls
 echo.
-echo %blue%Explorer Config v2.5.0%reset%
+echo %blue%Explorer Config v2.6.0%reset%
 echo.
 echo Thank you for using.
 echo Log: %LOG_FILE%
