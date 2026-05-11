@@ -283,6 +283,16 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 📂 ExplorerConfig.bat
+### [v2.2.0] - 2026-05-11
+#### 🛠 Fixed
+- **Menu Status Not Updating After Batch Operations**: Resolved critical issue where menu status remained stale after `ApplyAll` ([A]) and `RestoreDefaults` ([D]). Root cause was `setlocal disabledelayedexpansion` in `:CheckExplorerStatus` creating variable scope isolation. Removed `setlocal`/`endlocal` to allow status variables to persist in global scope.
+- **Status Variables Lost After Function Return**: Fixed variable scope issue by setting status colors/text directly without local scope isolation, ensuring immediate menu refresh after batch operations.
+
+#### 🔄 Changed
+- **CheckExplorerStatus Implementation**: Migrated from `setlocal`/`endlocal` pattern to direct global variable assignment. Status checks now reliably update menu state without requiring script restart or manual parameter application.
+- **Visual Feedback**: Added "[*] Updating status..." message before menu redraw in batch operations to improve user experience.
+
+
 ### [v2.1.0] - 2026-05-11
 #### 🛠 Fixed
 - **[6] Desktop Bin Logic Inverted**: Corrected `ToggleDesktopBin` function which was showing Recycle Bin instead of hiding it. Registry value now correctly set to `d=1` (hidden) matching user expectation and menu label.

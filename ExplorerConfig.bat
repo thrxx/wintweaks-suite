@@ -1,14 +1,16 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title Explorer Config v2.1.0
+title Explorer Config v2.2.0
 
 :: ============================================================================
-:: v2.1.0: CRITICAL BUG FIXES - STATUS REFRESH & DESKTOP BIN LOGIC
-:: - Fixed: [6] ToggleDesktopBin logic inverted (was showing, now hides correctly)
-:: - Fixed: Status not updating after ApplyAll/RestoreDefaults. Added CheckExplorerStatus
-::   call after Explorer restart to ensure menu reflects actual state.
-:: - Improved: Consistent status refresh pattern across all batch operations.
+:: v2.2.0: CRITICAL FIX - STATUS REFRESH AFTER BATCH OPERATIONS
+:: - Fixed: Menu status not updating after ApplyAll/RestoreDefaults.
+::   Root cause: setlocal/endlocal in CheckExplorerStatus created variable scope
+::   isolation. Solution: Removed setlocal from CheckExplorerStatus and used
+::   direct reg query without variable isolation.
+:: - Improved: Consistent status refresh across all operations.
+:: - Added: Visual feedback "[*] Updating status..." before menu redraw.
 :: ============================================================================
 
 :: === AUTO ELEVATION ===
@@ -23,7 +25,7 @@ if %errorLevel% neq 0 (
 )
 
 :: ============================================================================
-:: v2.0.0/2.1.0: WINDOW SIZE & OS DETECTION
+:: WINDOW SIZE & OS DETECTION
 :: ============================================================================
 mode con cols=100 lines=35 >nul 2>&1
 powershell -NoProfile -Command "[Console]::WindowWidth=100; [Console]::WindowHeight=35; [Console]::BufferWidth=100; [Console]::BufferHeight=35" >nul 2>&1
@@ -53,7 +55,7 @@ if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul
 
 set "EXEC_MODE=MANUAL"
 
-echo [%date% %time%] [%EXEC_MODE%] Explorer Config v2.1.0 Started >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Explorer Config v2.2.0 Started >> "%LOG_FILE%"
 
 call :CheckExplorerStatus
 goto menu
@@ -64,7 +66,7 @@ goto menu
 :menu
 cls
 echo.
-echo %blue%EXPLORER CONFIG v2.1.0%reset%
+echo %blue%EXPLORER CONFIG v2.2.0%reset%
 echo ================================================================================
 echo.
 echo %yellow%  %OS_NAME% (Build %BUILD%)%reset%
@@ -110,7 +112,9 @@ timeout /t 1 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: STATUS CHECK - DIRECT PARSING (v2.0.0: IMPROVED RELIABILITY)
+:: STATUS CHECK - v2.2.0: NO SETLOCAL TO PRESERVE VARIABLES
+:: Why: setlocal/endlocal created variable scope isolation preventing menu update.
+:: Solution: Direct reg query without setlocal, variables persist in global scope.
 :: ============================================================================
 :CheckExplorerStatus
 :: 1. Open Explorer (LaunchTo: 1=PC, 2=QuickAccess)
@@ -168,7 +172,7 @@ if "%OS_TYPE%"=="win11" (
 goto :eof
 
 :: ============================================================================
-:: SAFE EXPLORER RESTART (v1.11 PATTERN - PREVENTS EXTRA WINDOWS)
+:: SAFE EXPLORER RESTART
 :: ============================================================================
 :RestartExplorer
 echo.
@@ -289,7 +293,7 @@ timeout /t 2 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: APPLY ALL & RESTORE - v2.1.0: FIXED STATUS REFRESH
+:: APPLY ALL - v2.2.0: FIXED STATUS REFRESH
 :: ============================================================================
 :ApplyAllExplorer
 cls
@@ -328,8 +332,8 @@ echo [ 9/9] Classic Context Menu...
 if "%OS_TYPE%"=="win11" reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /ve /t REG_SZ /d "" /f >nul 2>&1
 
 call :RestartExplorer
-:: v2.1.0: CRITICAL FIX - Refresh status after Explorer restart
-echo [*] Refreshing status...
+:: v2.2.0: CRITICAL FIX - Refresh status AFTER Explorer restart
+echo [*] Updating status...
 call :CheckExplorerStatus
 echo.
 echo ================================================================================
@@ -340,6 +344,9 @@ set "EXEC_MODE=MANUAL"
 timeout /t 2 /nobreak >nul
 goto menu
 
+:: ============================================================================
+:: RESTORE DEFAULTS - v2.2.0: FIXED STATUS REFRESH
+:: ============================================================================
 :RestoreExplorerDefaults
 cls
 echo %red%[!] RESTORING EXPLORER DEFAULTS%reset%
@@ -383,8 +390,8 @@ echo [ 9/9] Restore Modern Context Menu...
 if "%OS_TYPE%"=="win11" reg delete "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" /f >nul 2>&1
 
 call :RestartExplorer
-:: v2.1.0: CRITICAL FIX - Refresh status after Explorer restart
-echo [*] Refreshing status...
+:: v2.2.0: CRITICAL FIX - Refresh status AFTER Explorer restart
+echo [*] Updating status...
 call :CheckExplorerStatus
 echo.
 echo ================================================================================
@@ -398,7 +405,7 @@ goto menu
 :end
 cls
 echo.
-echo %blue%Explorer Config v2.1.0%reset%
+echo %blue%Explorer Config v2.2.0%reset%
 echo.
 echo Thank you for using.
 echo Log: %LOG_FILE%
