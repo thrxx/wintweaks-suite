@@ -11,7 +11,7 @@ Components maintain independent versioning and are grouped under a coordinated p
 | Component              | Version  | Status | Last Updated |
 |------------------------|----------|----|--------------|
 | **SystemTweaker.bat**  | `v3.2.0` | ✅ Production | 2026-05-11   |
-| **BloatwareRemover.bat**| `v2.4.0` |  🧪 Beta Testing   | 2026-05-11   |
+| **BloatwareRemover.bat**| `v2.4.1` |  🧪 Beta Testing   | 2026-05-11   |
 | **ExplorerConfig.bat** | `v1.5.0` | 🔄 Pending Refactor | 2026-05-10   |
 
 ---
@@ -206,6 +206,15 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 🧹 BloatwareRemover
+### [v2.4.1] - 2026-05-11
+#### 🛠 Fixed
+- **False "Installed" Status for Removed Apps**: Resolved issue where the menu displayed "Installed" even after successful removal. Root cause was `Get-AppxPackage -AllUsers` returning **staged/provisioned packages** from the system database that remain registered after user-level uninstallation.
+- **Inaccurate Deployment Detection**: Refined `:FindPackage` and `:CheckCopilot` logic by removing `-AllUsers` and adding `Where-Object { $_.InstallLocation }` filter. The script now verifies that an app is **physically deployed** in the user profile, not just registered as "available for installation".
+
+#### 🔄 Changed
+- **Status Check Scope**: Shifted from system-wide package registry to current-user deployed packages, aligning status checks with actual `Remove-AppxPackage` behavior.
+- **Detection Reliability**: Added explicit `InstallLocation` verification to prevent false positives from Windows Feature Update caches and system provisioned apps.
+
 ### [v2.4.0] - 2026-05-11
 #### 🛠 Fixed
 - **Console Window Size Cutoff**: Resolved header truncation by replacing `mode con` with direct `$Host.UI.RawUI` API manipulation. Window and buffer dimensions are now explicitly set to 100x35 before any UI rendering.

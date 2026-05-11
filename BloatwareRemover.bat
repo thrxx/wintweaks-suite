@@ -2,11 +2,12 @@
 setlocal enabledelayedexpansion
 chcp 65001 >nul
 :: ============================================================================
-:: v2.4.0: FORCE CONSOLE SIZE VIA $Host.UI.RawUI & STATUS REFRESH FIX
-:: - Fixed: Window size now enforced using $Host.UI.RawUI API (as requested).
-:: - Fixed: Menu status not updating after removal. Added 2s delay + AppX cache
-::   flush before status check to ensure Windows Deployment Service reflects changes.
-:: - Improved: Visual feedback during refresh to prevent "frozen" perception.
+:: v2.4.1: CRITICAL FIX - FALSE "INSTALLED" STATUS (STAGED PACKAGES)
+:: - Fixed: Menu showed "Installed" for removed apps because Get-AppxPackage
+::   -AllUsers returned staged/provisioned packages from the system database.
+:: - Solution: Removed -AllUsers from status checks. Added Where-Object { $_.InstallLocation }
+::   to verify the package is physically deployed, not just registered.
+:: - Improved: AppX database refresh logic remains intact (2s delay + cache propagation).
 :: ============================================================================
 
 :: === AUTO ELEVATION ===
@@ -21,9 +22,7 @@ if %errorLevel% neq 0 (
 )
 
 :: ============================================================================
-:: v2.4.0: HYBRID WINDOW SIZE FIX
-:: Why: 'mode con' is often ignored by modern ConsoleHost.
-:: $Host.UI.RawUI directly manipulates the console buffer/window properties.
+:: v2.4.0/1: HYBRID WINDOW SIZE FIX
 :: ============================================================================
 powershell -NoProfile -Command "$w=$host.ui.rawui.windowSize; $w.width=100; $w.height=35; $host.ui.rawui.windowSize=$w; $b=$host.ui.rawui.bufferSize; $b.width=100; $b.height=35; $host.ui.rawui.bufferSize=$b" >nul 2>&1
 mode con cols=100 lines=35 >nul 2>&1
@@ -42,11 +41,10 @@ set "LOG_DIR=%LOCALAPPDATA%\Tweaker"
 set "LOG_FILE=%LOG_DIR%\bloatware_remover.log"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul
 
-:: Execution Context: MANUAL vs REMOVE_ALL
 set "EXEC_MODE=MANUAL"
 
 echo [*] Initializing interface...
-echo [%date% %time%] [%EXEC_MODE%] Bloatware Remover v2.4.0 Started >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Bloatware Remover v2.4.1 Started >> "%LOG_FILE%"
 
 call :CheckApps
 goto menu
@@ -57,7 +55,7 @@ goto menu
 :menu
 cls
 echo.
-echo %blue%BLOATWARE REMOVER v2.4.0%reset%
+echo %blue%BLOATWARE REMOVER v2.4.1%reset%
 echo ================================================================================
 echo.
 echo %yellow%  Safe removal of pre-installed Windows applications.%reset%
@@ -152,7 +150,8 @@ if !found! equ 0 (
 )
 
 if !found! equ 0 (
-    powershell -NoProfile -Command "$p = Get-AppxPackage -AllUsers -Name '*Copilot*' -EA 0; if ($p) { exit 0 } else { exit 1 }" >nul 2>&1
+    :: v2.4.1: Verify actual deployment, not just system registration
+    powershell -NoProfile -Command "$p = Get-AppxPackage -Name '*Copilot*' -PackageTypeFilter Main -EA 0 | Where-Object { $_.InstallLocation }; if ($p) { exit 0 } else { exit 1 }" >nul 2>&1
     if !errorlevel! equ 0 set "found=1"
 )
 
@@ -164,14 +163,17 @@ if !found! equ 1 (
 goto :eof
 
 :: ============================================================================
-:: GENERIC PACKAGE CHECK
+:: GENERIC PACKAGE CHECK - v2.4.1: ACCURATE INSTALLATION DETECTION
+:: Why: -AllUsers returned staged/provisioned packages.
+:: Solution: Check current user + verify InstallLocation exists.
 :: ============================================================================
 :FindPackage
 setlocal enabledelayedexpansion
 set "keyword=%~1"
 set "pref=%~2"
 
-powershell -NoProfile -Command "$p = Get-AppxPackage -AllUsers -Name '*%keyword%' -PackageTypeFilter Main -EA 0; if ($p) { exit 0 } else { exit 1 }" >nul 2>&1
+:: v2.4.1: Filter out staged packages by verifying physical install path
+powershell -NoProfile -Command "$p = Get-AppxPackage -Name '*%keyword%' -PackageTypeFilter Main -EA 0 | Where-Object { $_.InstallLocation }; if ($p) { exit 0 } else { exit 1 }" >nul 2>&1
 
 if %errorlevel% equ 0 (
     endlocal & set "%pref%_color=%red%" & set "%pref%_status=Installed"
@@ -181,9 +183,7 @@ if %errorlevel% equ 0 (
 goto :eof
 
 :: ============================================================================
-:: REMOVAL FUNCTIONS - v2.4.0: FIXED STATUS REFRESH
-:: Why: AppX removal is asynchronous. A 2s delay + cache flush ensures
-:: Get-AppxPackage returns accurate results before menu redraw.
+:: REMOVAL FUNCTIONS
 :: ============================================================================
 :RemoveCamera
 echo.
@@ -400,7 +400,7 @@ goto menu
 :end
 cls
 echo.
-echo %blue%Bloatware Remover v2.4.0%reset%
+echo %blue%Bloatware Remover v2.4.1%reset%
 echo.
 echo Thank you for using.
 echo Log: %LOG_FILE%
