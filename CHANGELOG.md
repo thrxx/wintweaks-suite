@@ -283,7 +283,7 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 📂 ExplorerConfig.bat
-### [v2.5.0] - 2026-05-11
+### [v2.5.0] - 2026-05-12
 #### 🛠 Fixed
 - **Persistent Status Update Failure**: Resolved critical issue where menu status remained stale after `ApplyAll` [A] and `RestoreDefaults` [D]. Root cause was a race condition between Explorer process restart and registry read latency, exacerbated by pipe parsing overhead in `CheckExplorerStatus`.
 - **Registry Read Fragility**: Removed dependency on `reg query | find` for batch status updates. Replaced with **Direct Status Injection** (`:SetStatusApplied` / `:SetStatusDefault`), which manually updates UI variables based on the logic of the applied settings.
