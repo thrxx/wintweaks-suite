@@ -283,6 +283,16 @@ Components maintain independent versioning and are grouped under a coordinated p
 ---
 
 ## 📂 ExplorerConfig.bat
+### [v2.1.0] - 2026-05-11
+#### 🛠 Fixed
+- **[6] Desktop Bin Logic Inverted**: Corrected `ToggleDesktopBin` function which was showing Recycle Bin instead of hiding it. Registry value now correctly set to `d=1` (hidden) matching user expectation and menu label.
+- **Status Not Updating After Batch Operations**: Resolved issue where menu status remained stale after `ApplyAll` ([A]) and `RestoreDefaults` ([D]). Added explicit `call :CheckExplorerStatus` after Explorer restart to ensure UI reflects actual system state immediately.
+
+#### 🔄 Changed
+- **Status Refresh Pattern**: Unified status update logic across manual and batch operations. Both modes now refresh menu immediately after changes, eliminating need for script restart.
+- **Inline Documentation**: Added comments explaining Recycle Bin registry logic (`0x0`=visible, `0x1`=hidden) to prevent future logic inversions.
+
+
 ### [v2.0.0] - 2026-05-11
 #### 🛠 Fixed
 - **Unsafe Explorer Restart**: Replaced `taskkill /F` with `taskkill /IM explorer.exe` to prevent console termination and potential data loss.

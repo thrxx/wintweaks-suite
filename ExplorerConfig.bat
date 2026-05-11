@@ -1,15 +1,14 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title Explorer Config v2.0.0
+title Explorer Config v2.1.0
 
 :: ============================================================================
-:: v2.0.0: CRITICAL REFACTORING - RELIABILITY & SAFETY
-:: - Fixed: Replaced dangerous `taskkill /F` with safe `taskkill /IM explorer.exe`.
-:: - Fixed: Window size now enforced via hybrid mode con + PowerShell API.
-:: - Added: English UI, Fixed Window Size (100x35), Execution Context (MANUAL/BATCH).
-:: - Added: Structured logging to %LOCALAPPDATA%\Tweaker\explorer_config.log.
-:: - Improved: Status checks use direct reg query logic (removed fragile disabledelayedexpansion).
+:: v2.1.0: CRITICAL BUG FIXES - STATUS REFRESH & DESKTOP BIN LOGIC
+:: - Fixed: [6] ToggleDesktopBin logic inverted (was showing, now hides correctly)
+:: - Fixed: Status not updating after ApplyAll/RestoreDefaults. Added CheckExplorerStatus
+::   call after Explorer restart to ensure menu reflects actual state.
+:: - Improved: Consistent status refresh pattern across all batch operations.
 :: ============================================================================
 
 :: === AUTO ELEVATION ===
@@ -24,7 +23,7 @@ if %errorLevel% neq 0 (
 )
 
 :: ============================================================================
-:: v2.0.0: WINDOW SIZE & OS DETECTION
+:: v2.0.0/2.1.0: WINDOW SIZE & OS DETECTION
 :: ============================================================================
 mode con cols=100 lines=35 >nul 2>&1
 powershell -NoProfile -Command "[Console]::WindowWidth=100; [Console]::WindowHeight=35; [Console]::BufferWidth=100; [Console]::BufferHeight=35" >nul 2>&1
@@ -54,7 +53,7 @@ if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul
 
 set "EXEC_MODE=MANUAL"
 
-echo [%date% %time%] [%EXEC_MODE%] Explorer Config v2.0.0 Started >> "%LOG_FILE%"
+echo [%date% %time%] [%EXEC_MODE%] Explorer Config v2.1.0 Started >> "%LOG_FILE%"
 
 call :CheckExplorerStatus
 goto menu
@@ -65,7 +64,7 @@ goto menu
 :menu
 cls
 echo.
-echo %blue%EXPLORER CONFIG v2.0.0%reset%
+echo %blue%EXPLORER CONFIG v2.1.0%reset%
 echo ================================================================================
 echo.
 echo %yellow%  %OS_NAME% (Build %BUILD%)%reset%
@@ -142,7 +141,8 @@ if %errorlevel% equ 0 (set "network_color=%green%" & set "network_status=Hidden"
 reg query "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" 2>nul | find "0x1" >nul
 if %errorlevel% equ 0 (set "navbin_color=%green%" & set "navbin_status=Enabled") else (set "navbin_color=%red%" & set "navbin_status=Disabled")
 
-:: 6. Recycle Bin on Desktop
+:: 6. Recycle Bin on Desktop - v2.1.0: FIXED LOGIC
+:: Value=0 means VISIBLE, Value=1 means HIDDEN
 reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" 2>nul | find "0x0" >nul
 if %errorlevel% equ 0 (set "desktopbin_color=%green%" & set "desktopbin_status=Visible") else (set "desktopbin_color=%red%" & set "desktopbin_status=Hidden")
 
@@ -241,10 +241,11 @@ timeout /t 1 /nobreak >nul
 goto menu
 
 :ToggleDesktopBin
-echo [*] Showing Recycle Bin on Desktop...
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "0" /f >nul
-echo [+] Recycle Bin Visible on Desktop!
-echo [%date% %time%] [%EXEC_MODE%] Showed DesktopBin >> "%LOG_FILE%"
+echo [*] Toggling Recycle Bin on Desktop...
+:: v2.1.0: FIXED - Now correctly hides the bin (value=1 means hidden)
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "1" /f >nul
+echo [+] Recycle Bin Hidden from Desktop!
+echo [%date% %time%] [%EXEC_MODE%] Hid DesktopBin >> "%LOG_FILE%"
 call :CheckExplorerStatus
 timeout /t 1 /nobreak >nul
 goto menu
@@ -288,7 +289,7 @@ timeout /t 2 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: APPLY ALL & RESTORE
+:: APPLY ALL & RESTORE - v2.1.0: FIXED STATUS REFRESH
 :: ============================================================================
 :ApplyAllExplorer
 cls
@@ -313,8 +314,8 @@ echo [ 5/9] Enable Recycle Bin in Navigation...
 reg add "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" /t REG_DWORD /d "1" /f >nul 2>&1
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "0" /f >nul 2>&1
 
-echo [ 6/9] Show Recycle Bin on Desktop...
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "0" /f >nul 2>&1
+echo [ 6/9] Hide Recycle Bin from Desktop...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "1" /f >nul 2>&1
 
 echo [ 7/9] Enable Compact View...
 if "%OS_TYPE%"=="win11" reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" /t REG_DWORD /d "1" /f >nul 2>&1
@@ -327,6 +328,9 @@ echo [ 9/9] Classic Context Menu...
 if "%OS_TYPE%"=="win11" reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /ve /t REG_SZ /d "" /f >nul 2>&1
 
 call :RestartExplorer
+:: v2.1.0: CRITICAL FIX - Refresh status after Explorer restart
+echo [*] Refreshing status...
+call :CheckExplorerStatus
 echo.
 echo ================================================================================
 echo %green%     ALL SETTINGS APPLIED!%reset%
@@ -363,8 +367,8 @@ echo [ 5/9] Disable Recycle Bin in Navigation...
 reg delete "HKCU\Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}" /v "System.IsPinnedToNameSpaceTree" /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /f >nul 2>&1
 
-echo [ 6/9] Hide Recycle Bin from Desktop...
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /t REG_DWORD /d "1" /f >nul 2>&1
+echo [ 6/9] Show Recycle Bin on Desktop...
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\HideDesktopIcons\NewStartPanel" /v "{645FF040-5081-101B-9F08-00AA002F954E}" /f >nul 2>&1
 
 echo [ 7/9] Disable Compact View...
 if "%OS_TYPE%"=="win11" reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "UseCompactMode" /f >nul 2>&1
@@ -379,6 +383,9 @@ echo [ 9/9] Restore Modern Context Menu...
 if "%OS_TYPE%"=="win11" reg delete "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" /f >nul 2>&1
 
 call :RestartExplorer
+:: v2.1.0: CRITICAL FIX - Refresh status after Explorer restart
+echo [*] Refreshing status...
+call :CheckExplorerStatus
 echo.
 echo ================================================================================
 echo %green%     DEFAULTS RESTORED!%reset%
@@ -391,7 +398,7 @@ goto menu
 :end
 cls
 echo.
-echo %blue%Explorer Config v2.0.0%reset%
+echo %blue%Explorer Config v2.1.0%reset%
 echo.
 echo Thank you for using.
 echo Log: %LOG_FILE%
