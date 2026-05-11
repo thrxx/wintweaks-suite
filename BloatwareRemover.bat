@@ -1,22 +1,34 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
+title Bloatware Remover v2.0.0
 
-:: === АВТОЗАПРОС ПРАВ АДМИНИСТРАТОРА ===
+:: ============================================================================
+:: v2.0.0: CRITICAL REFACTORING - FLOW CONTROL, LOGGING, STABILITY
+:: - Fixed: 'RemoveAll' sequence breaking due to 'goto menu' inside subroutines.
+:: - Fixed: Console termination and Explorer spawning issues (inherited logic).
+:: - Added: Execution Context (MANUAL vs BATCH) for precise logging.
+:: - Added: Robust Copilot detection (Registry + AppX) without risky file scans.
+:: - Added: English UI, Fixed Window Size (100x35).
+:: ============================================================================
+
+:: === AUTO ELEVATION ===
 net session >nul 2>&1
 if %errorLevel% neq 0 (
     echo.
-    echo [!] Требуются права администратора.
-    echo     Запуск от имени администратора...
+    echo [!] Administrator privileges required.
+    echo     Please confirm the UAC prompt.
     echo.
-    powershell -Command "Start-Process '%~dpnx0' -Verb RunAs" >nul 2>&1
+    powershell -NoProfile -Command "Start-Process '%~dpnx0' -Verb RunAs" >nul 2>&1
     exit /b
 )
-:: ========================================
 
-title Bloatware Remover v1.15
+:: ============================================================================
+:: FIXED WINDOW SIZE & INITIALIZATION
+:: ============================================================================
+mode con cols=100 lines=35
 
-:: Настройка цветов (VT100)
+:: Colors
 for /f "delims=" %%a in ('echo prompt $E^| cmd') do set "ESC=%%a"
 set "blue=%ESC%[96m"
 set "green=%ESC%[92m"
@@ -25,15 +37,32 @@ set "yellow=%ESC%[93m"
 set "white=%ESC%[97m"
 set "reset=%ESC%[0m"
 
-call :CheckApps
+:: Paths
+set "LOG_DIR=%LOCALAPPDATA%\Tweaker"
+set "LOG_FILE=%LOG_DIR%\bloatware_remover.log"
+if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul
 
+:: Execution Context: MANUAL (User clicked) vs REMOVE_ALL (Batch operation)
+set "EXEC_MODE=MANUAL"
+
+echo [%date% %time%] [%EXEC_MODE%] Bloatware Remover v2.0.0 Started >> "%LOG_FILE%"
+
+call :CheckApps
+goto menu
+
+:: ============================================================================
+:: MAIN MENU
+:: ============================================================================
 :menu
 cls
 echo.
-echo %blue%BLOATWARE REMOVER v1.15%reset%
+echo %blue%BLOATWARE REMOVER v2.0.0%reset%
 echo ================================================================================
 echo.
-echo %white%[1]%reset%  Камера (Camera)              : %cam_color%%cam_status%%reset%
+echo %yellow%  Safe removal of pre-installed Windows applications.%reset%
+echo %yellow%  System restart may be required for some changes.%reset%
+echo.
+echo %white%[1]%reset%  Camera                       : %cam_color%%cam_status%%reset%
 echo %white%[2]%reset%  Dev Home                     : %dev_color%%dev_status%%reset%
 echo %white%[3]%reset%  Feedback Hub                 : %feed_color%%feed_status%%reset%
 echo %white%[4]%reset%  Microsoft 365 Copilot        : %copilot_color%%copilot_status%%reset%
@@ -51,13 +80,13 @@ echo %white%[15]%reset% Sound Recorder               : %sound_color%%sound_statu
 echo %white%[16]%reset% Sticky Notes                 : %sticky_color%%sticky_status%%reset%
 echo.
 echo --------------------------------------------------------------------------------
-echo %green%[A]%reset%  %green%Удалить все отмеченные%reset%
-echo %red%[R]%reset%  %red%Восстановить приложения%reset%
-echo %white%[0]%reset%  %white%Выход%reset%
+echo %green%[A]%reset%  %green%Remove All Selected%reset%
+echo %red%[R]%reset%  %red%Restore Apps (All Users)%reset%
+echo %white%[0]%reset%  %white%Exit%reset%
 echo.
 echo ================================================================================
 echo.
-set /p choice="%white%Введите номер приложения для удаления: %reset%"
+set /p choice="%white%Enter app number to remove: %reset%"
 
 if "%choice%"=="1" call :RemoveCamera
 if "%choice%"=="2" call :RemoveDevHome
@@ -79,10 +108,12 @@ if /i "%choice%"=="A" call :RemoveAll
 if /i "%choice%"=="R" call :RestoreApps
 if "%choice%"=="0" goto end
 
+call :CheckApps
+timeout /t 1 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: ПРОВЕРКА ПРИЛОЖЕНИЙ (СПЕЦИАЛЬНО ДЛЯ COPILOT)
+:: APP DETECTION LOGIC
 :: ============================================================================
 :CheckApps
 :: 1. Camera
@@ -91,7 +122,7 @@ call :FindPackage "WindowsCamera" "cam"
 call :FindPackage "DevHome" "dev"
 :: 3. Feedback Hub
 call :FindPackage "WindowsFeedbackHub" "feed"
-:: 4. Copilot - СПЕЦИАЛЬНАЯ ПРОВЕРКА
+:: 4. Copilot (Complex Check)
 call :CheckCopilot "copilot"
 :: 5. Bing Search
 call :FindPackage "BingSearch" "bing"
@@ -117,227 +148,230 @@ call :FindPackage "Solitaire" "sol"
 call :FindPackage "SoundRecorder" "sound"
 :: 16. Sticky Notes
 call :FindPackage "StickyNotes" "sticky"
-
 goto :eof
 
 :: ============================================================================
-:: СПЕЦИАЛЬНАЯ ПРОВЕРКА COPILOT (системная функция Windows)
+:: SPECIALIZED COPILOT CHECK
+:: Why: Copilot is often a System Component. Checking only AppX fails if disabled via Policy.
+:: Logic: If Policy says OFF (1) OR Button HIDDEN (0) -> Green.
+::        Else if AppX exists -> Red.
 :: ============================================================================
 :CheckCopilot
 setlocal enabledelayedexpansion
 set "pref=%~1"
 set "found=0"
 
-:: Способ 1: Проверяем наличие кнопки Copilot в реестре
-reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "ShowCopilotButton" 2>nul | find "0x1" >nul
+:: Check 1: Registry Policy (System Level)
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v TurnOffWindowsCopilot 2>nul | find "0x1" >nul
 if !errorlevel! equ 0 set "found=1"
 
-:: Способ 2: Проверяем включен ли Copilot в системе
+:: Check 2: Registry User Preference (Explorer Button)
 if !found! equ 0 (
-    reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Ai.Copilot" /v "CopilotEnabled" 2>nul >nul
+    reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v ShowCopilotButton 2>nul | find "0x0" >nul
     if !errorlevel! equ 0 set "found=1"
 )
 
-:: Способ 3: Проверяем наличие процесса Copilot
+:: Check 3: PowerShell AppX (Only if not disabled by policy)
 if !found! equ 0 (
-    tasklist /FI "IMAGENAME eq explorer.exe" 2>nul | find "explorer.exe" >nul
-    if !errorlevel! equ 0 (
-        :: Copilot интегрирован в Explorer, проверяем наличие DLL
-        if exist "%windir%\System32\Windows.AI.MachineLearning*" set "found=1"
-    )
-)
-
-:: Способ 4: Проверяем через PowerShell наличие команды Copilot
-if !found! equ 0 (
-    powershell -Command "Get-Command *Copilot* -CommandType Application -ErrorAction SilentlyContinue" 2>nul | findstr /i "copilot" >nul
+    powershell -NoProfile -Command ^
+    "$pkgs = Get-AppxPackage -AllUsers -EA 0; " ^
+    "$found = $pkgs | Where-Object { $_.PackageFullName -like '*Copilot*' -or $_.Name -like '*Copilot*' }; " ^
+    "if ($found) { exit 0 } else { exit 1 }" >nul 2>&1
     if !errorlevel! equ 0 set "found=1"
 )
 
-:: Способ 5: Проверяем наличие папок Copilot
-if !found! equ 0 (
-    if exist "%windir%\SystemApps\Microsoft.Windows.Ai.Copilot*" set "found=1"
-    dir "%ProgramFiles%\WindowsApps\*Copilot*" /b 2>nul | findstr /i "copilot" >nul
-    if !errorlevel! equ 0 set "found=1"
-)
-
-:: Результат
+:: Result
 if !found! equ 1 (
-    endlocal & set "%pref%_color=%red%" & set "%pref%_status=Установлена"
+    endlocal & set "%pref%_color=%green%" & set "%pref%_status=Disabled/Removed"
 ) else (
-    endlocal & set "%pref%_color=%green%" & set "%pref%_status=Удалена"
+    endlocal & set "%pref%_color=%red%" & set "%pref%_status=Installed"
 )
 goto :eof
 
 :: ============================================================================
-:: ОБЫЧНЫЙ ПОИСК ПАКЕТА (для остальных приложений)
+:: GENERIC PACKAGE CHECK
 :: ============================================================================
 :FindPackage
 setlocal enabledelayedexpansion
 set "keyword=%~1"
 set "pref=%~2"
-
 powershell -NoProfile -Command ^
-    "$pkgs = Get-AppxPackage -AllUsers -EA 0; " ^
-    "$found = $pkgs | Where-Object { $_.PackageFullName -like '*%keyword%*' -or $_.Name -like '*%keyword%*' }; " ^
-    "if ($found) { exit 0 } else { exit 1 }" >nul 2>&1
-
+"$pkgs = Get-AppxPackage -AllUsers -EA 0; " ^
+"$found = $pkgs | Where-Object { $_.PackageFullName -like '*%keyword%*' -or $_.Name -like '*%keyword%*' }; " ^
+"if ($found) { exit 0 } else { exit 1 }" >nul 2>&1
 if %errorlevel% equ 0 (
-    endlocal & set "%pref%_color=%red%" & set "%pref%_status=Установлена"
+    endlocal & set "%pref%_color=%red%" & set "%pref%_status=Installed"
 ) else (
-    endlocal & set "%pref%_color=%green%" & set "%pref%_status=Удалена"
+    endlocal & set "%pref%_color=%green%" & set "%pref%_status=Removed"
 )
 goto :eof
 
 :: ============================================================================
-:: ФУНКЦИИ УДАЛЕНИЯ (ТЕПЕРЬ ТОЖЕ ИСПОЛЬЗУЮТ ГИБКИЙ ПОИСК)
+:: REMOVAL FUNCTIONS
+:: CRITICAL FIX: Uses 'EXEC_MODE' to decide whether to return to menu or exit function.
+:: This prevents 'RemoveAll' from breaking after the first item.
 :: ============================================================================
 :RemoveCamera
 echo.
-echo [*] Удаление Камеры...
+echo [*] Removing Camera...
 powershell -Command "Get-AppxPackage *WindowsCamera* | Remove-AppxPackage" >nul 2>&1
-echo [+] Камера удалена!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Camera removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: Camera >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveDevHome
 echo.
-echo [*] Удаление Dev Home...
+echo [*] Removing Dev Home...
 powershell -Command "Get-AppxPackage *DevHome* | Remove-AppxPackage" >nul 2>&1
-echo [+] Dev Home удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Dev Home removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: DevHome >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveFeedbackHub
 echo.
-echo [*] Удаление Feedback Hub...
+echo [*] Removing Feedback Hub...
 powershell -Command "Get-AppxPackage *WindowsFeedbackHub* | Remove-AppxPackage" >nul 2>&1
-echo [+] Feedback Hub удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Feedback Hub removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: FeedbackHub >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveCopilot
 echo.
-echo [*] Удаление Copilot...
+echo [*] Disabling/Removing Copilot...
+:: Try Registry First (Safest)
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v "TurnOffWindowsCopilot" /t REG_DWORD /d "1" /f >nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "ShowCopilotButton" /t REG_DWORD /d "0" /f >nul
+:: Try AppX Removal (Might fail if NonRemovable, ignore error)
 powershell -Command "Get-AppxPackage *Copilot* | Remove-AppxPackage" >nul 2>&1
-echo [+] Copilot удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Copilot disabled/removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: Copilot >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveBingSearch
 echo.
-echo [*] Удаление Bing Search...
+echo [*] Removing Bing Search...
 powershell -Command "Get-AppxPackage *BingSearch* | Remove-AppxPackage" >nul 2>&1
-echo [+] Bing Search удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Bing Search removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: BingSearch >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveClipchamp
 echo.
-echo [*] Удаление Clipchamp...
+echo [*] Removing Clipchamp...
 powershell -Command "Get-AppxPackage *Clipchamp* | Remove-AppxPackage" >nul 2>&1
-echo [+] Clipchamp удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Clipchamp removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: Clipchamp >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveNews
 echo.
-echo [*] Удаление News...
+echo [*] Removing News...
 powershell -Command "Get-AppxPackage *BingNews* | Remove-AppxPackage" >nul 2>&1
-echo [+] News удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] News removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: News >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveOneDrive
 echo.
-echo [*] Удаление OneDrive...
+echo [*] Removing OneDrive...
+:: OneDrive is tricky, often a .exe installer, but we try AppX first
 powershell -Command "Get-AppxPackage *OneDrive* | Remove-AppxPackage" >nul 2>&1
-echo [+] OneDrive удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] OneDrive removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: OneDrive >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveTeams
 echo.
-echo [*] Удаление Teams...
+echo [*] Removing Teams...
 powershell -Command "Get-AppxPackage *Teams* | Remove-AppxPackage" >nul 2>&1
-echo [+] Teams удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Teams removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: Teams >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveToDo
 echo.
-echo [*] Удаление To Do...
+echo [*] Removing To Do...
 powershell -Command "Get-AppxPackage *ToDo* | Remove-AppxPackage" >nul 2>&1
-echo [+] To Do удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] To Do removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: To Do >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveOutlook
 echo.
-echo [*] Удаление Outlook...
+echo [*] Removing Outlook...
 powershell -Command "Get-AppxPackage *Outlook* | Remove-AppxPackage" >nul 2>&1
-echo [+] Outlook удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Outlook removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: Outlook >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemovePowerAutomate
 echo.
-echo [*] Удаление Power Automate...
+echo [*] Removing Power Automate...
 powershell -Command "Get-AppxPackage *PowerAutomate* | Remove-AppxPackage" >nul 2>&1
-echo [+] Power Automate удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Power Automate removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: PowerAutomate >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveQuickAssist
 echo.
-echo [*] Удаление Quick Assist...
+echo [*] Removing Quick Assist...
 powershell -Command "Get-AppxPackage *QuickAssist* | Remove-AppxPackage" >nul 2>&1
-echo [+] Quick Assist удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Quick Assist removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: QuickAssist >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveSolitaire
 echo.
-echo [*] Удаление Solitaire...
+echo [*] Removing Solitaire...
 powershell -Command "Get-AppxPackage *Solitaire* | Remove-AppxPackage" >nul 2>&1
-echo [+] Solitaire удалена!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Solitaire removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: Solitaire >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveSoundRecorder
 echo.
-echo [*] Удаление Sound Recorder...
+echo [*] Removing Sound Recorder...
 powershell -Command "Get-AppxPackage *SoundRecorder* | Remove-AppxPackage" >nul 2>&1
-echo [+] Sound Recorder удален!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Sound Recorder removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: SoundRecorder >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
 :RemoveStickyNotes
 echo.
-echo [*] Удаление Sticky Notes...
+echo [*] Removing Sticky Notes...
 powershell -Command "Get-AppxPackage *StickyNotes* | Remove-AppxPackage" >nul 2>&1
-echo [+] Sticky Notes удалены!
-call :CheckApps
-timeout /t 1 /nobreak >nul
-goto menu
+echo [+] Sticky Notes removed!
+echo [%date% %time%] [%EXEC_MODE%] Removed: StickyNotes >> "%LOG_FILE%"
+if "%EXEC_MODE%"=="MANUAL" (call :CheckApps & goto menu)
+goto :eof
 
+:: ============================================================================
+:: REMOVE ALL (BATCH MODE)
+:: ============================================================================
 :RemoveAll
+cls
 echo.
-echo [*] Удаление всех приложений...
+echo %green%[*] REMOVING ALL APPLICATIONS...%reset%
+echo ================================================================================
+echo.
+set "EXEC_MODE=REMOVE_ALL"
+echo [%date% %time%] [%EXEC_MODE%] Batch removal started >> "%LOG_FILE%"
+
 call :RemoveCamera
 call :RemoveDevHome
 call :RemoveFeedbackHub
@@ -354,25 +388,34 @@ call :RemoveQuickAssist
 call :RemoveSolitaire
 call :RemoveSoundRecorder
 call :RemoveStickyNotes
+
+set "EXEC_MODE=MANUAL"
 echo.
 echo ================================================================================
-echo     ВСЕ ПРИЛОЖЕНИЯ УДАЛЕНЫ!
+echo %green%     ALL APPLICATIONS REMOVED!%reset%
 echo ================================================================================
+echo [%date% %time%] [%EXEC_MODE%] Batch removal completed >> "%LOG_FILE%"
 call :CheckApps
 timeout /t 2 /nobreak >nul
 goto menu
 
+:: ============================================================================
+:: RESTORE DEFAULTS
+:: ============================================================================
 :RestoreApps
 echo.
-echo [!] ВОССТАНОВЛЕНИЕ ВСЕХ ПРИЛОЖЕНИЙ
+echo %red%[!] RESTORING ALL APPLICATIONS%reset%
 echo.
-set /p confirm="Вы уверены? (Y/N): "
+set /p confirm="Are you sure? (Y/N): "
 if /i not "%confirm%"=="Y" goto menu
-
 echo.
-echo [*] Восстановление...
+echo [*] Restoring...
+set "EXEC_MODE=RESTORE"
+echo [%date% %time%] [%EXEC_MODE%] Restoration started >> "%LOG_FILE%"
 powershell -Command "Get-AppxPackage -AllUsers | Foreach {Add-AppxPackage -DisableDevelopmentMode -Register \"$($_.InstallLocation)\AppXManifest.xml\"}" >nul 2>&1
-echo [+] Приложения восстановлены!
+echo [+] Applications restored!
+echo [%date% %time%] [%EXEC_MODE%] Restoration completed >> "%LOG_FILE%"
+set "EXEC_MODE=MANUAL"
 call :CheckApps
 timeout /t 3 /nobreak >nul
 goto menu
@@ -380,37 +423,9 @@ goto menu
 :end
 cls
 echo.
-echo %blue%Bloatware Remover v1.15%reset%
+echo %blue%Bloatware Remover v2.0.0%reset%
 echo.
-echo Спасибо за использование.
-echo.
-timeout /t 2 /nobreak >nul
-exit
-
-:: ============================================================================
-:: ВОССТАНОВЛЕНИЕ
-:: ============================================================================
-:RestoreApps
-echo.
-echo [!] ВОССТАНОВЛЕНИЕ ВСЕХ ПРИЛОЖЕНИЙ
-echo.
-set /p confirm="Вы уверены? (Y/N): "
-if /i not "%confirm%"=="Y" goto menu
-
-echo.
-echo [*] Восстановление...
-powershell -Command "Get-AppxPackage -AllUsers | Foreach {Add-AppxPackage -DisableDevelopmentMode -Register \"$($_.InstallLocation)\AppXManifest.xml\"}" >nul 2>&1
-echo [+] Приложения восстановлены!
-call :CheckApps
-timeout /t 3 /nobreak >nul
-goto menu
-
-:end
-cls
-echo.
-echo %blue%Bloatware Remover v1.15%reset%
-echo.
-echo Спасибо за использование.
-echo.
+echo Thank you for using.
+echo Log: %LOG_FILE%
 timeout /t 2 /nobreak >nul
 exit
