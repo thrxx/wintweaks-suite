@@ -1,10 +1,11 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title System Tweaker v3.1.0
+title System Tweaker v3.2.0
 
 :: ============================================================================
-:: v3.1.0: EXPLORER RESTART FIX, ENHANCED LOGGING, EXECUTION CONTEXT TRACKING
+:: v3.2.0: WIN11 RECOMMENDATIONS FIX - PolicyManager keys
+:: v3.1.0: Explorer restart fix, enhanced logging context
 :: v3.0.0: Complete rewrite based on stable v1.11 architecture
 :: v2.7.0: Fallback mechanisms (removed for stability)
 :: v2.6.0: Fixed window size, English UI
@@ -42,7 +43,7 @@ if %BUILD% GEQ 22000 (
 )
 
 :: Colors
-set "VERSION=v3.1.0"
+set "VERSION=v3.2.0"
 for /f "delims=" %%a in ('echo prompt $E^| cmd') do set "ESC=%%a"
 set "blue=%ESC%[96m"
 set "green=%ESC%[92m"
@@ -72,6 +73,8 @@ if not exist "%BACKUP_DIR%\%DATE:~6,4%%DATE:~3,2%%DATE:~0,2%_init.reg" (
         "HKCU\Control Panel\Desktop"
         "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection"
         "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization"
+        "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start"
+        "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Education"
     ) do reg export "%%~K" "%BACKUP_DIR%\%DATE:~6,4%%DATE:~3,2%%DATE:~0,2%_init.reg" /y >nul 2>&1
     echo [%date% %time%] [%EXEC_MODE%] Backup created >> "%LOG_FILE%"
 )
@@ -193,20 +196,25 @@ if %errorlevel% equ 0 (set "menu_color=%green%" & set "menu_status=20 ms") else 
 reg query "HKCU\Control Panel\Desktop" /v JPEGImportQuality 2>nul | find "0x64" >nul
 if %errorlevel% equ 0 (set "wallpaper_color=%green%" & set "wallpaper_status=Disabled") else (set "wallpaper_color=%red%" & set "wallpaper_status=Enabled")
 
-:: 12. Recommendations
+:: 12. Recommendations - v3.2.0: Win11 uses PolicyManager keys
 if "%OS_TYPE%"=="win11" (
-    reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v HideRecommendedSection 2>nul | find "0x1" >nul
+    :: Check PolicyManager Start key (primary)
+    reg query "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start" /v HideRecommendedSection 2>nul | find "0x1" >nul
+    if %errorlevel% equ 0 (
+        set "rec_color=%green%" & set "rec_status=Hidden"
+    ) else (
+        set "rec_color=%red%" & set "rec_status=Shown"
+    )
 ) else (
+    :: Win10 uses Start_TrackDocs
     reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v Start_TrackDocs 2>nul | find "0x0" >nul
+    if %errorlevel% equ 0 (set "rec_color=%green%" & set "rec_status=Disabled") else (set "rec_color=%red%" & set "rec_status=Enabled")
 )
-if %errorlevel% equ 0 (set "rec_color=%green%" & set "rec_status=Hidden") else (set "rec_color=%red%" & set "rec_status=Shown")
 
 goto :eof
 
 :: ============================================================================
 :: SAFE EXPLORER RESTART (v1.11 PATTERN - PREVENTS EXTRA WINDOWS)
-:: Why: v1.11 used taskkill /F + start explorer.exe. This sequence reliably
-:: restores the shell without spawning a new File Explorer window on Win10/11.
 :: ============================================================================
 :RestartExplorerGracefully
 echo [*] Restarting Explorer...
@@ -346,12 +354,18 @@ goto menu
 echo.
 echo [*] Hiding recommendations...
 if "%OS_TYPE%"=="win11" (
-    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v "HideRecommendedSection" /t REG_DWORD /d "0" /f >nul
+    :: v3.2.0: Apply all three PolicyManager keys for Win11
+    echo     Applying PolicyManager keys...
+    reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start" /v "HideRecommendedSection" /t REG_DWORD /d "1" /f >nul
+    reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Education" /v "IsEducationEnvironment" /t REG_DWORD /d "1" /f >nul
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v "HideRecommendedSection" /t REG_DWORD /d "1" /f >nul
+    echo [+] Recommendations hidden (Win11 - PolicyManager)
 ) else (
+    :: Win10 uses Start_TrackDocs
     reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul
+    echo [+] Document tracking disabled (Win10)
 )
 call :RestartExplorerGracefully
-echo [+] Recommendations hidden!
 echo [%date% %time%] [%EXEC_MODE%] Applied: Recommended >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 2 /nobreak >nul
@@ -488,7 +502,9 @@ echo [11/12] Wallpaper Compression...
 reg add "HKCU\Control Panel\Desktop" /v "JPEGImportQuality" /t REG_DWORD /d "100" /f >nul
 echo [12/12] Recommendations...
 if "%OS_TYPE%"=="win11" (
-    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v "HideRecommendedSection" /t REG_DWORD /d "0" /f >nul
+    reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start" /v "HideRecommendedSection" /t REG_DWORD /d "1" /f >nul
+    reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Education" /v "IsEducationEnvironment" /t REG_DWORD /d "1" /f >nul
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v "HideRecommendedSection" /t REG_DWORD /d "1" /f >nul
 ) else (
     reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul
 )
@@ -555,7 +571,13 @@ reg add "HKCU\Control Panel\Desktop" /v "MenuShowDelay" /t REG_SZ /d "400" /f >n
 echo [11/12] Wallpaper Compression...
 reg add "HKCU\Control Panel\Desktop" /v "JPEGImportQuality" /t REG_DWORD /d "80" /f >nul
 echo [12/12] Recommendations...
-reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /f >nul 2>&1
+if "%OS_TYPE%"=="win11" (
+    reg delete "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start" /v "HideRecommendedSection" /f >nul 2>&1
+    reg delete "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Education" /v "IsEducationEnvironment" /f >nul 2>&1
+    reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v "HideRecommendedSection" /f >nul 2>&1
+) else (
+    reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /f >nul 2>&1
+)
 echo [13/13] Reset Taskbar and Start Menu...
 call :RestartExplorerGracefully
 

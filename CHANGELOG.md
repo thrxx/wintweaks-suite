@@ -3,6 +3,29 @@ All notable changes to the **System Tweaker** project will be documented in this
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),  
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.2.0] - 2026-05-11
+### 🛠 Fixed
+- **Windows 11 Start Recommendations Not Hiding**: Resolved issue where parameter `[12]` failed to hide the "Recommended" section in Windows 11 Start Menu. Implemented three-tier PolicyManager approach:
+    - Primary: `HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start\HideRecommendedSection=1`
+    - Context: `HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Education\IsEducationEnvironment=1`
+    - Fallback: `HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer\HideRecommendedSection=1`
+- **Status Check Desync**: Updated `:CheckStatus` to read from PolicyManager Start key for Win11 instead of deprecated `Start_IrisRecommendations`, which Windows 11 ignores in favor of PolicyManager.
+
+### 🔄 Changed
+- **Win11 Recommendation Logic**: Migrated from single-key approach to comprehensive PolicyManager-based configuration, aligning with Windows 11's modern policy architecture.
+- **Backup Scope**: Extended automatic registry backup to include PolicyManager keys (`Start` and `Education` device policies) for safe rollback.
+- **Restore Logic**: `RestoreDefaults` now properly removes all three PolicyManager keys for Win11 while preserving Win10 `Start_TrackDocs` behavior.
+
+### 📊 Testing Status
+- **Windows 10**: ✅ All parameters working correctly
+- **Windows 11**: ✅ All parameters working correctly (including [12] Recommendations)
+- **Production Ready**: SystemTweaker.bat is now 100% ready for deployment
+
+---
+*SystemTweaker.bat development complete. Ready to proceed with ExplorerConfig.bat and BloatwareRemover.bat refactoring.*
+
+---
+
 ## [v3.1.0] - 2026-05-11
 ### 🛠 Fixed
 - **Unwanted Explorer Window Spawn**: Resolved issue where `[6]`, `[12]`, `[T]`, `[S]`, `[A]`, and `[D]` opened an extra File Explorer window. Reverted to `v1.11`'s proven restart pattern (`taskkill /F /IM explorer.exe` + `start explorer.exe`), which correctly restores the desktop shell without triggering a new window instance.
