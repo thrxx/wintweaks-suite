@@ -1,20 +1,15 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul
-title System Tweaker v3.2.0
+title System Tweaker v3.3.0
 
 :: ============================================================================
-:: v3.2.0: WIN11 RECOMMENDATIONS FIX - PolicyManager keys
-:: v3.1.0: Explorer restart fix, enhanced logging context
-:: v3.0.0: Complete rewrite based on stable v1.11 architecture
-:: v2.7.0: Fallback mechanisms (removed for stability)
-:: v2.6.0: Fixed window size, English UI
-:: v2.5.0: BATCH_MODE flow control
-:: v2.4.0: Status sync fixes
-:: v2.3.0: OS detection, instant mouse apply
-:: v2.2.0: Idempotent registry core
-:: v2.1.0: HEX/DEC normalization
-:: v2.0.0: Safe registry core, backups, logging
+:: v3.3.0: ADD TIPS, AUTORUN, AND NUMLOCK TWEAKS
+:: - Added: Disable Tips & Suggestions (ContentDeliveryManager).
+:: - Added: Disable AutoRun for all drives (NoDriveTypeAutoRun + DisableAutoplay).
+:: - Added: Enable NumLock on Boot (InitialKeyboardIndicators for User & Default).
+:: - Updated: Menu items [13], [14], [15] with status checks.
+:: - Updated: ApplyAll and RestoreDefaults to include new tweaks.
 :: ============================================================================
 
 :: === AUTO ELEVATION ===
@@ -32,7 +27,6 @@ if %errorLevel% neq 0 (
 :: FIXED WINDOW SIZE & OS DETECTION
 :: ============================================================================
 mode con cols=100 lines=35
-
 for /f "tokens=3" %%v in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuild 2^>nul') do set "BUILD=%%v"
 if %BUILD% GEQ 22000 (
     set "OS_TYPE=win11"
@@ -43,7 +37,7 @@ if %BUILD% GEQ 22000 (
 )
 
 :: Colors
-set "VERSION=v3.2.0"
+set "VERSION=v3.3.0"
 for /f "delims=" %%a in ('echo prompt $E^| cmd') do set "ESC=%%a"
 set "blue=%ESC%[96m"
 set "green=%ESC%[92m"
@@ -59,7 +53,7 @@ set "BACKUP_DIR=%USERPROFILE%\Desktop\Tweaker_Backups"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul
 if not exist "%BACKUP_DIR%" mkdir "%BACKUP_DIR%" >nul
 
-:: Execution context tracking for logging (MANUAL / APPLY_ALL / RESTORE_DEFAULTS)
+:: Execution context tracking
 set "EXEC_MODE=MANUAL"
 
 echo [%date% %time%] [%EXEC_MODE%] System Tweaker %VERSION% (%OS_NAME%) Started >> "%LOG_FILE%"
@@ -111,6 +105,9 @@ if "%OS_TYPE%"=="win11" (
 ) else (
     echo %white%[12]%reset% Document Tracking            : %rec_color%%rec_status%%reset%
 )
+echo %white%[13]%reset% Tips & Suggestions         : %tips_color%%tips_status%%reset%
+echo %white%[14]%reset% AutoRun on Drives          : %autorun_color%%autorun_status%%reset%
+echo %white%[15]%reset% NumLock on Boot            : %numlock_color%%numlock_status%%reset%
 echo.
 echo --------------------------------------------------------------------------------
 echo %yellow%[T]%reset%  %yellow%Configure Taskbar%reset%
@@ -137,6 +134,9 @@ if "%choice%"=="9" call :ApplySticky
 if "%choice%"=="10" call :ApplyMenuDelay
 if "%choice%"=="11" call :ApplyWallpaper
 if "%choice%"=="12" call :ApplyRecommended
+if "%choice%"=="13" call :DisableTips
+if "%choice%"=="14" call :DisableAutoRun
+if "%choice%"=="15" call :EnableNumLock
 if /i "%choice%"=="T" call :CleanTaskbar
 if /i "%choice%"=="S" call :CleanStartMenu
 if /i "%choice%"=="X" call :SystemCleanup
@@ -149,7 +149,7 @@ timeout /t 1 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: STATUS CHECK - SIMPLE AND RELIABLE (v1.11 BASED)
+:: STATUS CHECK - SIMPLE AND RELIABLE
 :: ============================================================================
 :CheckStatus
 :: 1. Power Plan
@@ -178,7 +178,7 @@ if %errorlevel% equ 0 (set "copilot_color=%green%" & set "copilot_status=Disable
 
 :: 7. UAC
 reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnableLUA 2>nul | find "0x0" >nul
-if %errorlevel% equ 0 (set "uac_color=%yellow%" & set "uac_status=Disabled") else (set "uac_color=%green%" & set "uac_status=Enabled")
+if %errorlevel% equ 0 (set "uac_color=%yellow%" & set "uac_status=No Prompt") else (set "uac_color=%green%" & set "uac_status=Enabled")
 
 :: 8. Mouse Accel
 reg query "HKCU\Control Panel\Mouse" /v MouseSpeed 2>nul | find "0" >nul
@@ -196,25 +196,33 @@ if %errorlevel% equ 0 (set "menu_color=%green%" & set "menu_status=20 ms") else 
 reg query "HKCU\Control Panel\Desktop" /v JPEGImportQuality 2>nul | find "0x64" >nul
 if %errorlevel% equ 0 (set "wallpaper_color=%green%" & set "wallpaper_status=Disabled") else (set "wallpaper_color=%red%" & set "wallpaper_status=Enabled")
 
-:: 12. Recommendations - v3.2.0: Win11 uses PolicyManager keys
+:: 12. Recommendations
 if "%OS_TYPE%"=="win11" (
-    :: Check PolicyManager Start key (primary)
     reg query "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start" /v HideRecommendedSection 2>nul | find "0x1" >nul
-    if %errorlevel% equ 0 (
-        set "rec_color=%green%" & set "rec_status=Hidden"
-    ) else (
-        set "rec_color=%red%" & set "rec_status=Shown"
-    )
+    if %errorlevel% equ 0 (set "rec_color=%green%" & set "rec_status=Hidden") else (set "rec_color=%red%" & set "rec_status=Shown")
 ) else (
-    :: Win10 uses Start_TrackDocs
     reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v Start_TrackDocs 2>nul | find "0x0" >nul
     if %errorlevel% equ 0 (set "rec_color=%green%" & set "rec_status=Disabled") else (set "rec_color=%red%" & set "rec_status=Enabled")
 )
 
+:: 13. Tips & Suggestions (v3.3.0)
+reg query "HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" /v SystemPaneSuggestionsEnabled 2>nul | find "0x0" >nul
+if %errorlevel% equ 0 (set "tips_color=%green%" & set "tips_status=Disabled") else (set "tips_color=%red%" & set "tips_status=Enabled")
+
+:: 14. AutoRun on Drives (v3.3.0)
+:: NoDriveTypeAutoRun = 255 (0xff) means Disabled
+reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v NoDriveTypeAutoRun 2>nul | find "0xff" >nul
+if %errorlevel% equ 0 (set "autorun_color=%green%" & set "autorun_status=Disabled") else (set "autorun_color=%red%" & set "autorun_status=Enabled")
+
+:: 15. NumLock on Boot (v3.3.0)
+:: InitialKeyboardIndicators = 2 means Enabled
+reg query "HKCU\Control Panel\Keyboard" /v InitialKeyboardIndicators 2>nul | find "2" >nul
+if %errorlevel% equ 0 (set "numlock_color=%green%" & set "numlock_status=Enabled") else (set "numlock_color=%red%" & set "numlock_status=Disabled")
+
 goto :eof
 
 :: ============================================================================
-:: SAFE EXPLORER RESTART (v1.11 PATTERN - PREVENTS EXTRA WINDOWS)
+:: SAFE EXPLORER RESTART
 :: ============================================================================
 :RestartExplorerGracefully
 echo [*] Restarting Explorer...
@@ -225,7 +233,7 @@ timeout /t 1 /nobreak >nul
 goto :eof
 
 :: ============================================================================
-:: APPLY FUNCTIONS (DIRECT REGISTRY OPERATIONS)
+:: APPLY FUNCTIONS
 :: ============================================================================
 :ApplyPowerPlan
 echo.
@@ -296,12 +304,13 @@ goto menu
 
 :ApplyUAC
 echo.
-echo [!] WARNING: Disabling UAC reduces system security.
+echo [!] WARNING: Lowering UAC reduces system security.
 set /p confirm="Continue? (Y/N): "
 if /i not "%confirm%"=="Y" goto menu
-echo [*] Disabling UAC...
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v "EnableLUA" /t REG_DWORD /d "0" /f >nul
-echo [+] UAC disabled! Restart required.
+echo [*] Disabling UAC prompts...
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v "ConsentPromptBehaviorAdmin" /t REG_DWORD /d "0" /f >nul
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v "EnableLUA" /t REG_DWORD /d "1" /f >nul
+echo [+] UAC settings applied!
 echo [%date% %time%] [%EXEC_MODE%] Applied: UAC >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 1 /nobreak >nul
@@ -354,21 +363,54 @@ goto menu
 echo.
 echo [*] Hiding recommendations...
 if "%OS_TYPE%"=="win11" (
-    :: v3.2.0: Apply all three PolicyManager keys for Win11
-    echo     Applying PolicyManager keys...
     reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start" /v "HideRecommendedSection" /t REG_DWORD /d "1" /f >nul
     reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Education" /v "IsEducationEnvironment" /t REG_DWORD /d "1" /f >nul
     reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Explorer" /v "HideRecommendedSection" /t REG_DWORD /d "1" /f >nul
-    echo [+] Recommendations hidden (Win11 - PolicyManager)
+    echo [+] Recommendations hidden (Win11)!
 ) else (
-    :: Win10 uses Start_TrackDocs
     reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul
-    echo [+] Document tracking disabled (Win10)
+    echo [+] Document tracking disabled (Win10)!
 )
 call :RestartExplorerGracefully
 echo [%date% %time%] [%EXEC_MODE%] Applied: Recommended >> "%LOG_FILE%"
 call :CheckStatus
 timeout /t 2 /nobreak >nul
+goto menu
+
+:: ============================================================================
+:: NEW TWEAKS (v3.3.0)
+:: ============================================================================
+:DisableTips
+echo.
+echo [*] Disabling Tips & Suggestions...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" /v "SystemPaneSuggestionsEnabled" /t REG_DWORD /d "0" /f >nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" /v "SubscribedContent-338393Enabled" /t REG_DWORD /d "0" /f >nul
+echo [+] Tips & Suggestions disabled!
+echo [%date% %time%] [%EXEC_MODE%] Applied: Tips_Disabled >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 1 /nobreak >nul
+goto menu
+
+:DisableAutoRun
+echo.
+echo [*] Disabling AutoRun for all drives...
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v "NoDriveTypeAutoRun" /t REG_DWORD /d "255" /f >nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers" /v "DisableAutoplay" /t REG_DWORD /d "1" /f >nul
+echo [+] AutoRun disabled!
+echo [%date% %time%] [%EXEC_MODE%] Applied: AutoRun_Disabled >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 1 /nobreak >nul
+goto menu
+
+:EnableNumLock
+echo.
+echo [*] Enabling NumLock on Boot...
+reg add "HKU\.DEFAULT\Control Panel\Keyboard" /v "InitialKeyboardIndicators" /t REG_SZ /d "2" /f >nul
+reg add "HKCU\Control Panel\Keyboard" /v "InitialKeyboardIndicators" /t REG_SZ /d "2" /f >nul
+echo [+] NumLock enabled on boot!
+echo [%date% %time%] [%EXEC_MODE%] Applied: NumLock_Enabled >> "%LOG_FILE%"
+call :CheckStatus
+timeout /t 1 /nobreak >nul
 goto menu
 
 :: ============================================================================
@@ -393,7 +435,7 @@ reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband" /f
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Streams" /f >nul 2>&1
 del /f /q "%AppData%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\*.*" >nul 2>&1
 
-echo [3/4] Restarting Explorer...
+echo [3/4] Restarting interface...
 call :RestartExplorerGracefully
 
 echo [4/4] Pinning Explorer...
@@ -460,7 +502,7 @@ timeout /t 2 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: APPLY ALL - SEQUENTIAL (v1.11 BASED)
+:: APPLY ALL - SEQUENTIAL
 :: ============================================================================
 :ApplyAll
 cls
@@ -469,38 +511,39 @@ echo ===========================================================================
 set "EXEC_MODE=APPLY_ALL"
 echo [%date% %time%] [%EXEC_MODE%] Batch execution started >> "%LOG_FILE%"
 
-echo [ 1/12] Power Plan...
+echo [ 1/15] Power Plan...
 powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>nul
-echo [ 2/12] Background UWP Apps...
+echo [ 2/15] Background UWP Apps...
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" /v "GlobalUserDisabled" /t REG_DWORD /d "1" /f >nul
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" /v "BackgroundAppGlobalToggle" /t REG_DWORD /d "0" /f >nul
-echo [ 3/12] Delivery Optimization...
+echo [ 3/15] Delivery Optimization...
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v "DODownloadMode" /t REG_DWORD /d "0" /f >nul
 sc config DoSvc start=disabled >nul 2>&1
 sc stop DoSvc >nul 2>&1
-echo [ 4/12] Edge Startup Boost...
+echo [ 4/15] Edge Startup Boost...
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Edge" /v "StartupBoostEnabled" /t REG_DWORD /d "0" /f >nul
-echo [ 5/12] Telemetry ^& Ads...
+echo [ 5/15] Telemetry ^& Ads...
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v "AllowTelemetry" /t REG_DWORD /d "0" /f >nul
 reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo" /v "Enabled" /t REG_DWORD /d "0" /f >nul
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo" /v "DisabledByGroupPolicy" /t REG_DWORD /d "1" /f >nul
-echo [ 6/12] Windows Copilot...
+echo [ 6/15] Windows Copilot...
 reg add "HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot" /v "TurnOffWindowsCopilot" /t REG_DWORD /d "1" /f >nul
 reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v "TurnOffWindowsCopilot" /t REG_DWORD /d "1" /f >nul
-echo [ 7/12] User Account Control...
-reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v "EnableLUA" /t REG_DWORD /d "0" /f >nul
-echo [ 8/12] Mouse Acceleration...
+echo [ 7/15] User Account Control...
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v "ConsentPromptBehaviorAdmin" /t REG_DWORD /d "0" /f >nul
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v "EnableLUA" /t REG_DWORD /d "1" /f >nul
+echo [ 8/15] Mouse Acceleration...
 reg add "HKCU\Control Panel\Mouse" /v "MouseSpeed" /t REG_SZ /d "0" /f >nul
 reg add "HKCU\Control Panel\Mouse" /v "MouseThreshold1" /t REG_SZ /d "0" /f >nul
 reg add "HKCU\Control Panel\Mouse" /v "MouseThreshold2" /t REG_SZ /d "0" /f >nul
-echo [ 9/12] Sticky Keys...
+echo [ 9/15] Sticky Keys...
 reg add "HKCU\Control Panel\Accessibility\StickyKeys" /v "Flags" /t REG_SZ /d "506" /f >nul
 reg add "HKCU\Control Panel\Accessibility\Keyboard Response" /v "Flags" /t REG_SZ /d "122" /f >nul
-echo [10/12] Menu Delay...
+echo [10/15] Menu Delay...
 reg add "HKCU\Control Panel\Desktop" /v "MenuShowDelay" /t REG_SZ /d "20" /f >nul
-echo [11/12] Wallpaper Compression...
+echo [11/15] Wallpaper Compression...
 reg add "HKCU\Control Panel\Desktop" /v "JPEGImportQuality" /t REG_DWORD /d "100" /f >nul
-echo [12/12] Recommendations...
+echo [12/15] Recommendations...
 if "%OS_TYPE%"=="win11" (
     reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start" /v "HideRecommendedSection" /t REG_DWORD /d "1" /f >nul
     reg add "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Education" /v "IsEducationEnvironment" /t REG_DWORD /d "1" /f >nul
@@ -508,8 +551,17 @@ if "%OS_TYPE%"=="win11" (
 ) else (
     reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /t REG_DWORD /d "0" /f >nul
 )
-call :RestartExplorerGracefully
+echo [13/15] Tips & Suggestions...
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" /v "SystemPaneSuggestionsEnabled" /t REG_DWORD /d "0" /f >nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" /v "SubscribedContent-338393Enabled" /t REG_DWORD /d "0" /f >nul
+echo [14/15] AutoRun on Drives...
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v "NoDriveTypeAutoRun" /t REG_DWORD /d "255" /f >nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers" /v "DisableAutoplay" /t REG_DWORD /d "1" /f >nul
+echo [15/15] NumLock on Boot...
+reg add "HKU\.DEFAULT\Control Panel\Keyboard" /v "InitialKeyboardIndicators" /t REG_SZ /d "2" /f >nul
+reg add "HKCU\Control Panel\Keyboard" /v "InitialKeyboardIndicators" /t REG_SZ /d "2" /f >nul
 
+call :RestartExplorerGracefully
 echo.
 echo ================================================================================
 echo %green%     ALL SETTINGS APPLIED!%reset%
@@ -528,49 +580,51 @@ timeout /t 2 /nobreak >nul
 goto menu
 
 :: ============================================================================
-:: RESTORE DEFAULTS - SEQUENTIAL (v1.11 BASED)
+:: RESTORE DEFAULTS - SEQUENTIAL
 :: ============================================================================
 :RestoreDefaults
 cls
 echo %red%[!] RESTORING DEFAULTS%reset%
 set /p confirm="Are you sure? (Y/N): "
 if /i not "%confirm%"=="Y" goto menu
-set "EXEC_MODE=RESTORE_DEFAULTS"
-echo [%date% %time%] [%EXEC_MODE%] Restoration process started >> "%LOG_FILE%"
 echo.
 echo [*] Restoring...
 echo ================================================================================
-echo [ 1/12] Power Plan...
+set "EXEC_MODE=RESTORE_DEFAULTS"
+echo [%date% %time%] [%EXEC_MODE%] Restoration process started >> "%LOG_FILE%"
+
+echo [ 1/15] Power Plan...
 powercfg -setactive 381b4222-f694-41f0-9685-ff5bb260df2e >nul 2>&1
-echo [ 2/12] Background UWP Apps...
+echo [ 2/15] Background UWP Apps...
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" /v "GlobalUserDisabled" /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" /v "BackgroundAppGlobalToggle" /f >nul 2>&1
-echo [ 3/12] Delivery Optimization...
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /f >nul 2>&1
+echo [ 3/15] Delivery Optimization...
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization" /v "DODownloadMode" /f >nul 2>&1
 sc config DoSvc start=manual >nul 2>&1
-echo [ 4/12] Edge Startup Boost...
+echo [ 4/15] Edge Startup Boost...
 reg delete "HKLM\SOFTWARE\Policies\Microsoft\Edge" /v "StartupBoostEnabled" /f >nul 2>&1
-echo [ 5/12] Telemetry ^& Ads...
+echo [ 5/15] Telemetry ^& Ads...
 reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v "AllowTelemetry" /f >nul 2>&1
 reg delete "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo" /v "Enabled" /f >nul 2>&1
 reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo" /v "DisabledByGroupPolicy" /f >nul 2>&1
-echo [ 6/12] Windows Copilot...
-reg delete "HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot" /f >nul 2>&1
-reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /f >nul 2>&1
-echo [ 7/12] User Account Control...
+echo [ 6/15] Windows Copilot...
+reg delete "HKCU\Software\Policies\Microsoft\Windows\WindowsCopilot" /v "TurnOffWindowsCopilot" /f >nul 2>&1
+reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" /v "TurnOffWindowsCopilot" /f >nul 2>&1
+echo [ 7/15] User Account Control...
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v "ConsentPromptBehaviorAdmin" /t REG_DWORD /d "5" /f >nul
 reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v "EnableLUA" /t REG_DWORD /d "1" /f >nul
-echo [ 8/12] Mouse Acceleration...
+echo [ 8/15] Mouse Acceleration...
 reg add "HKCU\Control Panel\Mouse" /v "MouseSpeed" /t REG_SZ /d "1" /f >nul
 reg add "HKCU\Control Panel\Mouse" /v "MouseThreshold1" /t REG_SZ /d "0" /f >nul
 reg add "HKCU\Control Panel\Mouse" /v "MouseThreshold2" /t REG_SZ /d "0" /f >nul
-echo [ 9/12] Sticky Keys...
+echo [ 9/15] Sticky Keys...
 reg add "HKCU\Control Panel\Accessibility\StickyKeys" /v "Flags" /t REG_SZ /d "510" /f >nul
 reg add "HKCU\Control Panel\Accessibility\Keyboard Response" /v "Flags" /t REG_SZ /d "126" /f >nul
-echo [10/12] Menu Delay...
+echo [10/15] Menu Delay...
 reg add "HKCU\Control Panel\Desktop" /v "MenuShowDelay" /t REG_SZ /d "400" /f >nul
-echo [11/12] Wallpaper Compression...
+echo [11/15] Wallpaper Compression...
 reg add "HKCU\Control Panel\Desktop" /v "JPEGImportQuality" /t REG_DWORD /d "80" /f >nul
-echo [12/12] Recommendations...
+echo [12/15] Recommendations...
 if "%OS_TYPE%"=="win11" (
     reg delete "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Start" /v "HideRecommendedSection" /f >nul 2>&1
     reg delete "HKLM\SOFTWARE\Microsoft\PolicyManager\current\device\Education" /v "IsEducationEnvironment" /f >nul 2>&1
@@ -578,9 +632,17 @@ if "%OS_TYPE%"=="win11" (
 ) else (
     reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "Start_TrackDocs" /f >nul 2>&1
 )
-echo [13/13] Reset Taskbar and Start Menu...
-call :RestartExplorerGracefully
+echo [13/15] Tips & Suggestions...
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" /v "SystemPaneSuggestionsEnabled" /f >nul 2>&1
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" /v "SubscribedContent-338393Enabled" /f >nul 2>&1
+echo [14/15] AutoRun on Drives...
+reg delete "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v "NoDriveTypeAutoRun" /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\AutoplayHandlers" /v "DisableAutoplay" /t REG_DWORD /d "0" /f >nul
+echo [15/15] NumLock on Boot...
+reg add "HKU\.DEFAULT\Control Panel\Keyboard" /v "InitialKeyboardIndicators" /t REG_SZ /d "0" /f >nul
+reg add "HKCU\Control Panel\Keyboard" /v "InitialKeyboardIndicators" /t REG_SZ /d "0" /f >nul
 
+call :RestartExplorerGracefully
 echo.
 echo ================================================================================
 echo %green%     DEFAULTS RESTORED!%reset%

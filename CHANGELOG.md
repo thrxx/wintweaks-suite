@@ -10,13 +10,24 @@ Components maintain independent versioning and are grouped under a coordinated p
 ## 📊 Current Release Matrix
 | Component              | Version  | Status | Last Updated |
 |------------------------|----------|----|--------------|
-| **SystemTweaker.bat**  | `v3.2.0` | ✅ Production | 2026-05-11   |
+| **SystemTweaker.bat**  | `v3.3.0` | ✅ Production | 2026-05-13   |
 | **BloatwareRemover.bat**| `v2.4.1` |  ✅ Production | 2026-05-11   |
 | **ExplorerConfig.bat** | `v2.8.0` | ✅ Production | 2026-05-12   |
 
 ---
 
 ## SystemTweaker.bat
+### [v3.3.0] - 2026-05-13
+#### ✨ Added
+- **Disable Tips & Suggestions**: Added tweak to disable "Tips and Suggestions" in Start Menu and Settings by setting `SystemPaneSuggestionsEnabled` and `SubscribedContent-338393Enabled` to 0 in `ContentDeliveryManager`.
+- **Disable AutoRun**: Added security tweak to block AutoRun for all drive types by setting `NoDriveTypeAutoRun` to 255 (Machine-wide) and `DisableAutoplay` to 1 (User-level).
+- **Enable NumLock on Boot**: Added usability tweak to ensure NumLock is enabled at the login screen and for the user profile by setting `InitialKeyboardIndicators` to 2.
+
+#### 🔄 Changed
+- **Menu Expansion**: Extended main menu to 15 items to accommodate new tweaks.
+- **ApplyAll/RestoreDefaults**: Updated sequential execution logic to include the three new tweaks in both application and restoration flows.
+- **Status Checks**: Implemented specific registry queries for the new tweaks (`0x0` for Tips, `0xff` for AutoRun, `2` for NumLock) to ensure accurate green/red status indicators.
+
 ### [v3.2.0] - 2026-05-11
 #### 🛠 Fixed
 - **Windows 11 Start Recommendations Not Hiding**: Resolved issue where parameter `[12]` failed to hide the "Recommended" section in Windows 11 Start Menu. Implemented three-tier PolicyManager approach:
